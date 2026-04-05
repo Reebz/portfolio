@@ -5,7 +5,10 @@
   if (sessionStorage.getItem('booted') ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
       window.matchMedia('(hover: none) and (pointer: coarse)').matches ||
-      window.location.hash) return;
+      window.location.hash) {
+    document.body.classList.remove('booting');
+    return;
+  }
 
   // --- CGA BIOS Colors (per https://en.wikipedia.org/wiki/BIOS_color_attributes) ---
   // Reference: https://www.dosdays.co.uk/media/award/v4.51pg_startup.png
@@ -42,13 +45,9 @@
   overlay.setAttribute('aria-label', 'System startup');
   document.body.appendChild(overlay);
 
-  // Hide desktop
   var desktop = document.getElementById('desktop');
   var taskbar = document.getElementById('taskbar');
   var startMenu = document.getElementById('start-menu');
-  if (desktop) desktop.style.visibility = 'hidden';
-  if (taskbar) taskbar.style.visibility = 'hidden';
-  if (startMenu) startMenu.style.visibility = 'hidden';
 
   var stage = 0;
   var timer;
@@ -171,9 +170,7 @@
     sessionStorage.setItem('booted', '1');
     overlay.style.transition = 'opacity 0.4s';
     overlay.style.opacity = '0';
-    if (desktop) desktop.style.visibility = '';
-    if (taskbar) taskbar.style.visibility = '';
-    if (startMenu) startMenu.style.visibility = '';
+    document.body.classList.remove('booting');
     setTimeout(function() { overlay.remove(); }, 400);
   }
 
