@@ -1,7 +1,36 @@
+# OS
 .DS_Store
-*.swp
 thumbs.db
+
+# Editor / IDE
+*.swp
+.vscode/
+.idea/
+
+# Node / build artifacts
 node_modules/
+dist/
+build/
+coverage/
+.cache/
+
+# Test output
 test-results/
 playwright-report/
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Local-only docs (plans, brainstorms, notes)
 docs/
+
+# Agent / assistant metadata (not for public repos)
+.claude/
+.serena/
+mempalace.yaml

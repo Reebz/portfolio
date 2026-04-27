@@ -2,7 +2,7 @@
 
 My portfolio site styled as a Windows 98 desktop. Static HTML, CSS, and vanilla JavaScript. No frameworks, etc. Hosted on GitHub Pages. 
 
-What's this for? Fun and nostaliga. I wanted to bring back the feeling of the PC on which I built my first website (shoutout to geocities), including the the boot sequence and the hardware specs as best as I could remember. I'll keep adding things over time. 
+What's this for? Fun and nostalgia. I wanted to bring back the feeling of the PC on which I built my first website (shoutout to geocities), including the boot sequence and the hardware specs as best as I could remember. I'll keep adding things over time.
 
 **Live:** [reebz.com](https://reebz.com)
 

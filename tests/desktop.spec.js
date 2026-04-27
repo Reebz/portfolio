@@ -113,15 +113,9 @@ test.describe('Windows', () => {
   });
 
   test('About Me window has notepad content', async ({ page }) => {
-    // Open via Start menu > Programs > Accessories > Notepad
-    await page.click('#start-button');
-    await page.waitForTimeout(200);
-    await page.hover('text=Programs');
-    await page.waitForTimeout(400);
-    await page.hover('text=Accessories');
-    await page.waitForTimeout(400);
-    const aboutBtn = page.locator('[data-window="window-about"]').first();
-    await aboutBtn.click();
+    // About Me opens from its desktop icon, not the Start menu.
+    const aboutIcon = page.locator('[data-window-id="window-about"]');
+    await aboutIcon.dblclick();
     await page.waitForTimeout(300);
     const notepad = page.locator('#window-about .notepad-content');
     await expect(notepad).toContainText('Thanks for surfing');
