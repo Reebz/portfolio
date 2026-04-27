@@ -1205,8 +1205,6 @@
         launchNotepad();
       } else if (app === 'napster') {
         launchNapster();
-      } else if (app === 'winamp') {
-        launchWinamp();
       } else if (app === 'icq') {
         launchICQ();
       }
@@ -2365,62 +2363,6 @@
         });
       }, 3000);
     });
-  }
-
-  function launchWinamp() {
-    var html =
-      '<div id="winamp-app">' +
-        '<div class="winamp-titlebar">WINAMP</div>' +
-        '<div class="winamp-display">' +
-          '<div class="winamp-title-scroll" id="winamp-title">1. Artist 1 - Track A</div>' +
-          '<div class="winamp-time" id="winamp-time">00:00</div>' +
-        '</div>' +
-        '<div class="winamp-info-row">' +
-          '<span>128 kbps</span><span>44 kHz</span>' +
-        '</div>' +
-        '<div class="winamp-stereo">' +
-          '<span class="lit">stereo</span><span>mono</span>' +
-        '</div>' +
-        '<div class="winamp-seekbar"><div class="winamp-seek-fill" id="winamp-seek-fill"></div></div>' +
-        '<div class="winamp-transport">' +
-          '<button class="winamp-btn" onclick="winampPrev()" title="Previous">&#9664;&#9664;</button>' +
-          '<button class="winamp-btn" onclick="winampPlay()" title="Play">&#9654;</button>' +
-          '<button class="winamp-btn" onclick="winampPause()" title="Pause">&#10074;&#10074;</button>' +
-          '<button class="winamp-btn" onclick="winampStop()" title="Stop">&#9632;</button>' +
-          '<button class="winamp-btn" onclick="winampNext()" title="Next">&#9654;&#9654;</button>' +
-        '</div>' +
-        '<div class="winamp-volume">' +
-          '<span>Vol:</span>' +
-          '<input type="range" min="0" max="100" value="75" oninput="if(winampPlayer)winampPlayer.setVolume(this.value)">' +
-        '</div>' +
-        '<div id="winamp-yt-container" style="width:200px;height:150px;margin:4px auto;border:1px solid #000;overflow:hidden;">' +
-          '<div id="winamp-yt-player"></div>' +
-        '</div>' +
-        '<div class="winamp-playlist">' +
-          '<div class="winamp-pl-header">Playlist</div>' +
-          '<div class="winamp-pl-list" id="winamp-playlist-list">' +
-            buildPlaylistHTML() +
-          '</div>' +
-        '</div>' +
-      '</div>';
-
-    createAppWindow('window-winamp', 'Winamp', html,
-      { width: '280px', noResize: true, bodyStyle: 'padding:0;margin:0;background:#2B2B2B;overflow:auto;' });
-
-    // Init YouTube player after DOM is ready
-    setTimeout(function() {
-      if (typeof YT !== 'undefined' && YT.Player) {
-        initWinampPlayer('winamp-yt-player');
-      }
-      // Wire playlist clicks
-      var list = document.getElementById('winamp-playlist-list');
-      if (list) {
-        list.addEventListener('dblclick', function(e) {
-          var item = e.target.closest('.winamp-pl-item');
-          if (item) winampLoadTrack(parseInt(item.getAttribute('data-index')));
-        });
-      }
-    }, 100);
   }
 
   function launchICQ() {

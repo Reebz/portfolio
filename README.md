@@ -40,7 +40,7 @@ This project uses and is inspired by the work of others. Credit where it's due, 
 - **[window98-html-css-js](https://github.com/lolstring/window98-html-css-js)** - implementation reference (MIT)
 - **[Minesweeper](https://github.com/nickarocho/minesweeper)** by Nick Arocho - game reference
 - **The Way of Code** - book content adapted by Rick Rubin, source at [thewayofcode.com](https://www.thewayofcode.com)
-- **Windows XP "Bliss"** wallpaper by Charles O'Rear
+- **Windows 98 "Clouds"** wallpaper — SVG recreation of the original Microsoft Windows 98 desktop bitmap (1998)
 
 ## License
 

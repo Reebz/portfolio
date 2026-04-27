@@ -87,7 +87,7 @@ body {
 /* === Desktop === */
 #desktop {
   background: var(--win98-teal);
-  background-image: url('img/clouds.webp');
+  background-image: url('img/clouds.svg');
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
@@ -788,7 +788,6 @@ a:focus-visible,
   margin-right: 1px;
   position: relative;
   top: 1px;
-  border-radius: 2px 2px 0 0;
 }
 
 .sysprop-tabs [role="tab"][aria-selected="true"] {
@@ -798,6 +797,11 @@ a:focus-visible,
   font-weight: bold;
   top: 0;
   padding-top: 5px;
+}
+
+.sysprop-tabs [role="tab"]:focus-visible {
+  outline: 1px dotted var(--win98-black);
+  outline-offset: -3px;
 }
 
 .sysprop-panel-area {
