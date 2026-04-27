@@ -122,25 +122,22 @@
       timer = setTimeout(nextStage, 600);
 
     } else if (stage === 4) {
-      // =============== WINDOWS 98 LOGO ===============
+      // =============== WINDOWS 98 STARTUP SPLASH ===============
+      overlay.style.backgroundColor = '#000';
+      overlay.style.backgroundImage = "url('img/win98-boot-splash.webp')";
+      overlay.style.backgroundSize = 'cover';
+      overlay.style.backgroundPosition = 'center center';
+      overlay.style.backgroundRepeat = 'no-repeat';
       overlay.innerHTML =
-        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;">' +
-          '<div style="margin-bottom:20px;">' +
-            '<span style="display:inline-block;width:16px;height:16px;background:#FF0000;margin:2px;"></span>' +
-            '<span style="display:inline-block;width:16px;height:16px;background:#00AA00;margin:2px;"></span>' +
-            '<span style="display:inline-block;width:16px;height:16px;background:#0000FF;margin:2px;"></span>' +
-            '<span style="display:inline-block;width:16px;height:16px;background:#FFFF00;margin:2px;"></span>' +
-          '</div>' +
-          '<div style="color:' + WHITE + ';font-size:22px;font-weight:bold;letter-spacing:6px;font-family:\'Pixelated MS Sans Serif\',Arial,sans-serif;">Portfolio 98</div>' +
-          '<div style="color:' + LGRAY + ';font-size:11px;margin-top:12px;font-family:\'Pixelated MS Sans Serif\',Arial,sans-serif;">Starting Portfolio 98...</div>' +
-          '<div style="margin-top:28px;width:220px;height:18px;border:1px solid #555555;background:#000;">' +
-            '<div id="boot-progress" style="height:100%;width:0%;background:#000080;transition:width 1.8s linear;"></div>' +
-          '</div>' +
+        '<style>' +
+          '@keyframes win98-progress {' +
+            '0% { transform: translateX(-44px); }' +
+            '100% { transform: translateX(220px); }' +
+          '}' +
+        '</style>' +
+        '<div style="position:absolute;left:50%;bottom:9vh;transform:translateX(-50%);width:220px;height:14px;background:#000;border:1px solid;border-color:#7d7d7d #f5f5f5 #f5f5f5 #7d7d7d;overflow:hidden;">' +
+          '<div style="width:44px;height:100%;background:#1d4eb6;animation:win98-progress 1.4s linear infinite;"></div>' +
         '</div>';
-      requestAnimationFrame(function() {
-        var bar = document.getElementById('boot-progress');
-        if (bar) bar.style.width = '100%';
-      });
       timer = setTimeout(nextStage, 2200);
 
     } else {
