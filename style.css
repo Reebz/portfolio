@@ -87,7 +87,7 @@ body {
 /* === Desktop === */
 #desktop {
   background: var(--win98-teal);
-  background-image: url('img/clouds.svg');
+  background-image: url('img/win98-clouds-logo.webp');
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;

@@ -131,12 +131,12 @@
       overlay.innerHTML =
         '<style>' +
           '@keyframes win98-progress {' +
-            '0% { transform: translateX(-44px); }' +
-            '100% { transform: translateX(220px); }' +
+            '0% { transform: translateX(-160px); }' +
+            '100% { transform: translateX(480px); }' +
           '}' +
         '</style>' +
-        '<div style="position:absolute;left:50%;bottom:9vh;transform:translateX(-50%);width:220px;height:14px;background:#000;border:1px solid;border-color:#7d7d7d #f5f5f5 #f5f5f5 #7d7d7d;overflow:hidden;">' +
-          '<div style="width:44px;height:100%;background:#1d4eb6;animation:win98-progress 1.4s linear infinite;"></div>' +
+        '<div style="position:absolute;left:50%;bottom:32px;transform:translateX(-50%);width:480px;height:16px;background:linear-gradient(180deg,#0a1450 0%,#1a2c7a 100%);border:1px solid;border-color:#000820 #6378b8 #6378b8 #000820;box-shadow:inset 0 0 1px rgba(0,0,0,0.6);overflow:hidden;">' +
+          '<div style="width:160px;height:100%;background:linear-gradient(90deg,rgba(72,116,232,0) 0%,rgba(72,116,232,0.55) 18%,#7aa6ff 50%,rgba(72,116,232,0.55) 82%,rgba(72,116,232,0) 100%);animation:win98-progress 1.6s linear infinite;"></div>' +
         '</div>';
       timer = setTimeout(nextStage, 2200);
 
