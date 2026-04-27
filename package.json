@@ -1,11 +1,7 @@
 {
   "name": "mitch-portfolio",
   "version": "1.0.0",
-  "description": "My portfolio site, styled as a Windows 98 desktop - down to the BIOS boot sequence, the hardware specs, and the under-construction GIFs. Static HTML, CSS, and vanilla JavaScript. No frameworks, no build step, no npm. Hosted on GitHub Pages.",
-  "main": "boot.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "My portfolio site, styled as a Windows 98 desktop — down to the BIOS boot sequence and the hardware specs. Static HTML, CSS, and vanilla JavaScript. No frameworks, no build step. Hosted on GitHub Pages.",
   "scripts": {
     "test": "npx playwright test"
   },
@@ -13,9 +9,9 @@
     "type": "git",
     "url": "git+https://github.com/Reebz/portfolio.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["portfolio", "windows-98", "win98", "retro"],
+  "author": "Mitch Ribar",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Reebz/portfolio/issues"
