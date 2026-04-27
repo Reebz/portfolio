@@ -819,23 +819,46 @@
   }
 
   // --- Visitor Counter ---
-  function initVisitorCounter() {
-    if (!elVisitorCounter) return;
+  // GoatCounter exposes a public TOTAL.json counter once "Allow adding visitor
+  // counts on your website" is enabled in the site settings. We render the
+  // cached value first for instant paint, then refresh from the live endpoint
+  // and fall back to the legacy localStorage-incrementing counter if both the
+  // cache and the network are unavailable.
+  var COUNTER_URL = 'https://reebz.goatcounter.com/counter/TOTAL.json';
+  var COUNTER_CACHE_KEY = 'visitor-count-cache';
 
+  function renderVisitorCount(value) {
+    if (elVisitorCounter) elVisitorCounter.textContent = value;
+    var counterDisplay = document.getElementById('counter-display');
+    if (counterDisplay) counterDisplay.textContent = value;
+  }
+
+  function localFallbackCount() {
     var count = parseInt(localStorage.getItem('visitor-count')) || INITIAL_VISITOR_COUNT;
-
-    // Increment once per session
     if (!sessionStorage.getItem('counted')) {
       count++;
       sessionStorage.setItem('counted', '1');
       localStorage.setItem('visitor-count', count);
     }
+    return count.toLocaleString();
+  }
 
-    elVisitorCounter.textContent = count.toLocaleString();
+  function initVisitorCounter() {
+    if (!elVisitorCounter) return;
 
-    // Update the counter display in the popup too
-    var counterDisplay = document.getElementById('counter-display');
-    if (counterDisplay) counterDisplay.textContent = count.toLocaleString();
+    var cached = localStorage.getItem(COUNTER_CACHE_KEY);
+    renderVisitorCount(cached || localFallbackCount());
+
+    if (typeof fetch !== 'function') return;
+    fetch(COUNTER_URL, { cache: 'no-cache' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (data && typeof data.count === 'string' && data.count.length) {
+          localStorage.setItem(COUNTER_CACHE_KEY, data.count);
+          renderVisitorCount(data.count);
+        }
+      })
+      .catch(function() { /* keep cached/fallback display */ });
   }
 
   // --- System Tray Click Handlers ---
