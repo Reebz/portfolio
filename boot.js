@@ -123,22 +123,36 @@
 
     } else if (stage === 4) {
       // =============== WINDOWS 98 STARTUP SPLASH ===============
-      overlay.style.backgroundColor = '#000';
-      overlay.style.backgroundImage = "url('img/win98-boot-splash.webp')";
-      overlay.style.backgroundSize = 'cover';
-      overlay.style.backgroundPosition = 'center center';
-      overlay.style.backgroundRepeat = 'no-repeat';
-      overlay.innerHTML =
-        '<style>' +
-          '@keyframes win98-progress {' +
-            '0% { transform: translateX(-160px); }' +
-            '100% { transform: translateX(480px); }' +
-          '}' +
-        '</style>' +
-        '<div style="position:absolute;left:50%;bottom:32px;transform:translateX(-50%);width:480px;height:16px;background:linear-gradient(180deg,#0a1450 0%,#1a2c7a 100%);border:1px solid;border-color:#000820 #6378b8 #6378b8 #000820;box-shadow:inset 0 0 1px rgba(0,0,0,0.6);overflow:hidden;">' +
-          '<div style="width:160px;height:100%;background:linear-gradient(90deg,rgba(72,116,232,0) 0%,rgba(72,116,232,0.55) 18%,#7aa6ff 50%,rgba(72,116,232,0.55) 82%,rgba(72,116,232,0) 100%);animation:win98-progress 1.6s linear infinite;"></div>' +
-        '</div>';
-      timer = setTimeout(nextStage, 2200);
+      // Decode the splash image before painting the overlay so we never get a
+      // black-flash-with-floating-progress-bar moment on slow connections.
+      // Cap the wait at 200ms so a stalled image can't hold up boot indefinitely.
+      var splashSrc = 'img/win98-boot-splash.webp';
+      var splashImg = new Image();
+      var paintedSplash = false;
+      var paintSplash = function() {
+        if (paintedSplash) return;
+        paintedSplash = true;
+        overlay.style.backgroundColor = '#000';
+        overlay.style.backgroundImage = "url('" + splashSrc + "')";
+        overlay.style.backgroundSize = 'cover';
+        overlay.style.backgroundPosition = 'center center';
+        overlay.style.backgroundRepeat = 'no-repeat';
+        overlay.innerHTML =
+          '<style>' +
+            '@keyframes win98-progress {' +
+              '0% { transform: translateX(-160px); }' +
+              '100% { transform: translateX(480px); }' +
+            '}' +
+          '</style>' +
+          '<div style="position:absolute;left:50%;bottom:32px;transform:translateX(-50%);width:480px;height:16px;background:linear-gradient(180deg,#0a1450 0%,#1a2c7a 100%);border:1px solid;border-color:#000820 #6378b8 #6378b8 #000820;box-shadow:inset 0 0 1px rgba(0,0,0,0.6);overflow:hidden;">' +
+            '<div style="width:160px;height:100%;background:linear-gradient(90deg,rgba(72,116,232,0) 0%,rgba(72,116,232,0.55) 18%,#7aa6ff 50%,rgba(72,116,232,0.55) 82%,rgba(72,116,232,0) 100%);animation:win98-progress 1.6s linear infinite;"></div>' +
+          '</div>';
+        timer = setTimeout(nextStage, 2200);
+      };
+      splashImg.onload = paintSplash;
+      splashImg.onerror = paintSplash;
+      splashImg.src = splashSrc;
+      setTimeout(paintSplash, 200);
 
     } else {
       completeBoot();
@@ -169,16 +183,18 @@
     overlay.style.opacity = '0';
     document.body.classList.remove('booting');
     setTimeout(function() { overlay.remove(); }, 400);
+    // Always unbind the keydown listener — both the click-skip and the keydown-
+    // skip paths flow through here. Without this, click-skip leaves the listener
+    // bound for the lifetime of the tab.
+    document.removeEventListener('keydown', onSkipKey);
   }
 
   // Skip on click or keypress
+  function onSkipKey() {
+    if (document.getElementById('boot-overlay')) completeBoot();
+  }
   overlay.addEventListener('click', completeBoot);
-  document.addEventListener('keydown', function onKey() {
-    if (document.getElementById('boot-overlay')) {
-      completeBoot();
-      document.removeEventListener('keydown', onKey);
-    }
-  });
+  document.addEventListener('keydown', onSkipKey);
 
   nextStage();
 })();

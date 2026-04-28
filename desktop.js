@@ -253,10 +253,18 @@
     win.state = 'closed';
     win.el.setAttribute('data-state', 'closed');
     win.el.style.transform = '';
-    // Reset any fixed positioning from system tray popups
+    // Reset all positioning so the next open path (cascade or tray-anchored) starts clean.
     win.el.style.position = '';
+    win.el.style.left = '';
     win.el.style.right = '';
+    win.el.style.top = '';
     win.el.style.bottom = '';
+
+    // Reset Contact form Send button so a mid-flight close doesn't brick it on reopen.
+    if (id === 'window-contact') {
+      var sendBtn = win.el.querySelector('button[type="submit"]');
+      if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+    }
 
     // Remove taskbar button
     if (win.taskbarBtn) {
@@ -272,6 +280,14 @@
 
     updateHash(activeWindowId);
     announce(getTitleText(win.el) + ' closed');
+
+    // Transient windows (e.g. Notepad — one DOM node per launch) get fully torn down
+    // so the DOM and the windows registry don't accumulate forever.
+    if (win.transient) {
+      win.el.remove();
+      windows.delete(id);
+      VALID_WINDOWS.delete(id);
+    }
   }
 
   function minimizeWindow(id) {
@@ -637,13 +653,33 @@
     }
   }
 
+  // Hash deep-links to windows that aren't created until their launcher runs
+  // need a way to bring those windows into existence on first reach. This map
+  // is the single source of truth for window-id -> launcher mappings; entries
+  // here can be opened cold from a URL hash.
+  function getLaunchableWindowMap() {
+    return {
+      'window-paint': launchPaint,
+      'window-calculator': launchCalculator,
+      'window-minesweeper': launchMinesweeper,
+      'window-help-book': launchHelpBook,
+      'window-run-dialog': launchRun,
+      'window-napster': launchNapster,
+      'window-icq': launchICQ,
+    };
+  }
+
   function applyHashState() {
     var hash = window.location.hash.slice(1);
-    if (hash && VALID_WINDOWS.has(hash)) {
-      isHandlingHash = true;
+    if (!hash) return;
+    isHandlingHash = true;
+    if (VALID_WINDOWS.has(hash)) {
       openWindow(hash);
-      isHandlingHash = false;
+    } else {
+      var launchers = getLaunchableWindowMap();
+      if (launchers[hash]) launchers[hash]();
     }
+    isHandlingHash = false;
   }
 
   var hashDebounce = null;
@@ -822,10 +858,25 @@
   // GoatCounter exposes a public TOTAL.json counter once "Allow adding visitor
   // counts on your website" is enabled in the site settings. We render the
   // cached value first for instant paint, then refresh from the live endpoint
-  // and fall back to the legacy localStorage-incrementing counter if both the
-  // cache and the network are unavailable.
+  // (gated by a session-local 30-minute timestamp matching GoatCounter's server
+  // cache window) and fall back to the legacy localStorage-incrementing counter
+  // if both the cache and the network are unavailable.
   var COUNTER_URL = 'https://reebz.goatcounter.com/counter/TOTAL.json';
   var COUNTER_CACHE_KEY = 'visitor-count-cache';
+  var COUNTER_FETCHED_AT_KEY = 'counter-fetched-at';
+  var COUNTER_FETCH_TTL_MS = 30 * 60 * 1000;
+
+  // Single source of formatting truth so cached, live-fetched, and fallback
+  // values all render identically. Accepts a number, a numeric string, or an
+  // already-formatted "1,234" string. Returns null for anything we can't parse,
+  // which the callers treat as a signal to keep the prior display.
+  function formatCount(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'string' && /^\d{1,3}(,\d{3})+$/.test(value)) return value;
+    var n = typeof value === 'number' ? value : parseInt(String(value).replace(/,/g, ''), 10);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n.toLocaleString();
+  }
 
   function renderVisitorCount(value) {
     if (elVisitorCounter) elVisitorCounter.textContent = value;
@@ -834,29 +885,36 @@
   }
 
   function localFallbackCount() {
-    var count = parseInt(localStorage.getItem('visitor-count')) || INITIAL_VISITOR_COUNT;
+    var count = parseInt(localStorage.getItem('visitor-count')) || 3;
     if (!sessionStorage.getItem('counted')) {
       count++;
       sessionStorage.setItem('counted', '1');
       localStorage.setItem('visitor-count', count);
     }
-    return count.toLocaleString();
+    return formatCount(count);
   }
 
   function initVisitorCounter() {
     if (!elVisitorCounter) return;
 
-    var cached = localStorage.getItem(COUNTER_CACHE_KEY);
+    var cached = formatCount(localStorage.getItem(COUNTER_CACHE_KEY));
     renderVisitorCount(cached || localFallbackCount());
 
     if (typeof fetch !== 'function') return;
-    fetch(COUNTER_URL, { cache: 'no-cache' })
+
+    // Skip the network round-trip if we already fetched within the server cache window.
+    var fetchedAt = parseInt(sessionStorage.getItem(COUNTER_FETCHED_AT_KEY), 10);
+    if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt < COUNTER_FETCH_TTL_MS) return;
+
+    fetch(COUNTER_URL)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(data) {
-        if (data && typeof data.count === 'string' && data.count.length) {
-          localStorage.setItem(COUNTER_CACHE_KEY, data.count);
-          renderVisitorCount(data.count);
-        }
+        if (!data) return;
+        var formatted = formatCount(data.count);
+        if (!formatted) return;
+        localStorage.setItem(COUNTER_CACHE_KEY, formatted);
+        sessionStorage.setItem(COUNTER_FETCHED_AT_KEY, String(Date.now()));
+        renderVisitorCount(formatted);
       })
       .catch(function() { /* keep cached/fallback display */ });
   }
@@ -1744,7 +1802,11 @@
     if (elCtxDesktop) elCtxDesktop.classList.remove('open');
     if (elCtxTitlebar) elCtxTitlebar.classList.remove('open');
     if (elCtxTaskbar) elCtxTaskbar.classList.remove('open');
-    ctxTargetWindowId = null;
+    // Note: do NOT reset ctxTargetWindowId here. showContextMenu calls hideAllContextMenus
+    // before opening the new menu, which would clobber the id the contextmenu handler
+    // just assigned. The id is short-lived per right-click and gets overwritten on the next
+    // contextmenu event; leaving a stale value between events is harmless because the
+    // action handlers only fire when a [data-action] menu item is clicked.
   }
 
   function setupContextMenus() {
@@ -1779,48 +1841,47 @@
       }
     });
 
-    // Close context menus on any click
-    document.addEventListener('click', function() {
-      hideAllContextMenus();
-    });
-
-    // Context menu actions
+    // Single document-click delegator: capture the target window id BEFORE hiding
+    // menus (hideAllContextMenus nulls ctxTargetWindowId), then dispatch the action,
+    // then always hide menus. Two separate listeners would race — the hide listener
+    // would null the id before the action listener could read it.
     document.addEventListener('click', function(e) {
       var action = e.target.closest('[data-action]');
-      if (!action) return;
-      var act = action.getAttribute('data-action');
-
-      switch (act) {
-        case 'refresh': location.reload(); break;
-        case 'properties': openWindow('window-my-computer'); break;
-        case 'arrange-icons':
-          localStorage.removeItem('icon-positions');
-          layoutIcons();
-          break;
-        case 'ctx-minimize':
-          if (ctxTargetWindowId) minimizeWindow(ctxTargetWindowId);
-          break;
-        case 'ctx-maximize':
-          if (ctxTargetWindowId) toggleMaximize(ctxTargetWindowId);
-          break;
-        case 'ctx-close':
-          if (ctxTargetWindowId) closeWindow(ctxTargetWindowId);
-          break;
-        case 'cascade-windows':
-          var idx = 0;
-          windows.forEach(function(win, id) {
-            if (win.state === 'open' || win.state === 'maximized') {
-              var offset = 30 + (idx * 22);
-              win.el.style.top = offset + 'px';
-              win.el.style.left = offset + 'px';
-              bringToFront(id);
-              idx++;
-            }
-          });
-          break;
-        case 'show-desktop':
-          showDesktop();
-          break;
+      var targetId = ctxTargetWindowId;
+      if (action) {
+        var act = action.getAttribute('data-action');
+        switch (act) {
+          case 'refresh': location.reload(); break;
+          case 'properties': openWindow('window-my-computer'); break;
+          case 'arrange-icons':
+            localStorage.removeItem('icon-positions');
+            layoutIcons();
+            break;
+          case 'ctx-minimize':
+            if (targetId) minimizeWindow(targetId);
+            break;
+          case 'ctx-maximize':
+            if (targetId) toggleMaximize(targetId);
+            break;
+          case 'ctx-close':
+            if (targetId) closeWindow(targetId);
+            break;
+          case 'cascade-windows':
+            var idx = 0;
+            windows.forEach(function(win, id) {
+              if (win.state === 'open' || win.state === 'maximized') {
+                var offset = 30 + (idx * 22);
+                win.el.style.top = offset + 'px';
+                win.el.style.left = offset + 'px';
+                bringToFront(id);
+                idx++;
+              }
+            });
+            break;
+          case 'show-desktop':
+            showDesktop();
+            break;
+        }
       }
       hideAllContextMenus();
     });
@@ -2028,7 +2089,7 @@
 
     elDesktop.appendChild(win);
     VALID_WINDOWS.add(id);
-    windows.set(id, { state: 'closed', prevRect: null, el: win, taskbarBtn: null });
+    windows.set(id, { state: 'closed', prevRect: null, el: win, taskbarBtn: null, transient: !!opts.transient });
     openWindow(id);
   }
 
@@ -2190,14 +2251,12 @@
     document.getElementById('calc-app').appendChild(script);
   }
 
-  var notepadCounter = 0;
   function launchNotepad() {
-    notepadCounter++;
-    var id = 'window-notepad-' + notepadCounter;
+    var id = 'window-notepad-' + Date.now();
     createAppWindow(id, 'Untitled - Notepad',
       '<div class="notepad-menu-bar" aria-hidden="true"><span>File</span><span>Edit</span><span>Format</span><span>Help</span></div>' +
       '<textarea style="width:100%;flex:1;border:none;padding:4px;font-family:\'Lucida Console\',\'Courier New\',monospace;font-size:12px;resize:none;box-sizing:border-box;" placeholder=""></textarea>',
-      { width: '400px', height: '300px', bodyStyle: 'display:flex;flex-direction:column;padding:0;' });
+      { width: '400px', height: '300px', bodyStyle: 'display:flex;flex-direction:column;padding:0;', transient: true });
   }
 
   function launchRun() {
@@ -2231,7 +2290,7 @@
           '<input type="text" value="cmd" readonly style="flex:1;font-size:11px;background:#fff;">' +
         '</div>' +
         '<div style="text-align:right;">' +
-          '<button id="run-ok-btn" style="min-width:75px;">OK</button>' +
+          '<button class="run-ok-btn" style="min-width:75px;">OK</button>' +
           '<button data-close-window="' + runId + '" style="min-width:75px;margin-left:4px;">Cancel</button>' +
           '<button style="min-width:75px;margin-left:4px;" disabled>Browse...</button>' +
         '</div>' +
@@ -2242,8 +2301,9 @@
     windows.set(runId, { state: 'closed', prevRect: null, el: win, taskbarBtn: null });
     openWindow(runId);
 
-    // Wire OK button
-    document.getElementById('run-ok-btn').addEventListener('click', function() {
+    // Scope the OK button query to the dialog itself so the binding cannot collide
+    // with any future window that happens to share the same control class.
+    win.querySelector('.run-ok-btn').addEventListener('click', function() {
       closeWindow(runId);
       launchMatrixTerminal();
     });
