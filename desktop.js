@@ -8,9 +8,7 @@
   // --- Constants ---
   var TASKBAR_HEIGHT = 28;
   var MIN_WIN_SIZE = { w: 300, h: 200 };
-  var INITIAL_VISITOR_COUNT = 3;
   var DBLCLICK_DELAY = 300;
-  var Z_NORMALIZE_THRESHOLD = 1000;
 
   // --- Project Data ---
   var PROJECTS = [
@@ -122,15 +120,29 @@
   var VALID_WINDOWS = new Set();
 
   // --- State ---
-  var windows = new Map(); // id -> { state, prevRect, el, taskbarBtn }
+  var windows = new Map(); // id -> { state, prevRect, el, taskbarBtn, transient }
   var zCounter = 10;
   var activeWindowId = null;
   var cascadeIndex = 0;
   var clickTimeouts = new Map(); // iconId -> timeout
 
+  // Single source of truth for registering a window with both the routing whitelist
+  // and the lifecycle map. Every window-creation path flows through this.
+  function registerWindow(id, el, opts) {
+    opts = opts || {};
+    VALID_WINDOWS.add(id);
+    windows.set(id, {
+      state: 'closed',
+      prevRect: null,
+      el: el,
+      taskbarBtn: null,
+      transient: !!opts.transient,
+    });
+  }
+
   // --- DOM References (cached at init) ---
   var elDesktop, elIconGrid, elTaskbar, elTaskbarButtons;
-  var elStartMenu, elStartButton, elSystemTray;
+  var elStartMenu, elStartButton;
   var elClock, elVisitorCounter, elAnnouncer;
 
   // --- Announcer ---
@@ -149,11 +161,6 @@
 
     zCounter++;
     win.el.style.zIndex = zCounter;
-
-    // Normalize if counter gets too high
-    if (zCounter > Z_NORMALIZE_THRESHOLD) {
-      normalizeZIndex();
-    }
 
     // Update active/inactive visual states
     if (activeWindowId && activeWindowId !== windowId) {
@@ -177,20 +184,6 @@
     activeWindowId = windowId;
   }
 
-  function normalizeZIndex() {
-    var openWindows = [];
-    windows.forEach(function(win, id) {
-      if (win.state === 'open' || win.state === 'maximized') {
-        openWindows.push({ id: id, z: parseInt(win.el.style.zIndex) || 0 });
-      }
-    });
-    openWindows.sort(function(a, b) { return a.z - b.z; });
-    openWindows.forEach(function(item, i) {
-      var win = windows.get(item.id);
-      win.el.style.zIndex = 10 + i;
-    });
-    zCounter = 10 + openWindows.length;
-  }
 
   // --- Window Operations ---
   function openWindow(id) {
@@ -653,19 +646,42 @@
     }
   }
 
-  // Hash deep-links to windows that aren't created until their launcher runs
-  // need a way to bring those windows into existence on first reach. This map
-  // is the single source of truth for window-id -> launcher mappings; entries
-  // here can be opened cold from a URL hash.
-  function getLaunchableWindowMap() {
+  // Single source of truth for app dispatch. Keyed by the data-app value used
+  // on Start-menu items. The Start-menu click delegator and the hash deep-link
+  // router both consult this; adding a new app means one entry here, not three
+  // edits across a switch ladder, a hash map, and the menu HTML.
+  function APP_LAUNCHERS_GETTER() {
     return {
-      'window-paint': launchPaint,
-      'window-calculator': launchCalculator,
-      'window-minesweeper': launchMinesweeper,
-      'window-help-book': launchHelpBook,
-      'window-run-dialog': launchRun,
-      'window-napster': launchNapster,
-      'window-icq': launchICQ,
+      paint: launchPaint,
+      minesweeper: launchMinesweeper,
+      calculator: launchCalculator,
+      help: launchHelpBook,
+      run: launchRun,
+      notepad: launchNotepad,
+      napster: launchNapster,
+      icq: launchICQ,
+    };
+  }
+  // Late-bound table so all launchers are hoisted and visible when accessed.
+  var APP_LAUNCHERS;
+  function getAppLaunchers() {
+    if (!APP_LAUNCHERS) APP_LAUNCHERS = APP_LAUNCHERS_GETTER();
+    return APP_LAUNCHERS;
+  }
+
+  // Hash deep-links to windows that aren't created until their launcher runs
+  // need a way to bring those windows into existence on first reach. Window-id
+  // keys map to the same launcher functions APP_LAUNCHERS uses by app name.
+  function getLaunchableWindowMap() {
+    var L = getAppLaunchers();
+    return {
+      'window-paint': L.paint,
+      'window-calculator': L.calculator,
+      'window-minesweeper': L.minesweeper,
+      'window-help-book': L.help,
+      'window-run-dialog': L.run,
+      'window-napster': L.napster,
+      'window-icq': L.icq,
     };
   }
 
@@ -1272,22 +1288,9 @@
         openWindow(windowId);
       } else if (action === 'shutdown') {
         openWindow('window-shutdown');
-      } else if (app === 'paint') {
-        launchPaint();
-      } else if (app === 'minesweeper') {
-        launchMinesweeper();
-      } else if (app === 'calculator') {
-        launchCalculator();
-      } else if (app === 'help') {
-        launchHelpBook();
-      } else if (app === 'run') {
-        launchRun();
-      } else if (app === 'notepad') {
-        launchNotepad();
-      } else if (app === 'napster') {
-        launchNapster();
-      } else if (app === 'icq') {
-        launchICQ();
+      } else if (app) {
+        var launcher = getAppLaunchers()[app];
+        if (launcher) launcher();
       }
 
       elStartMenu.classList.remove('open');
@@ -1520,7 +1523,6 @@
 
       if (project.type === 'construction') {
         // Create an "Under Construction" window
-        VALID_WINDOWS.add(id);
         var conWin = document.createElement('div');
         conWin.id = id;
         conWin.className = 'window';
@@ -1542,9 +1544,8 @@
             '<img src="img/under-construction.gif" alt="Under Construction" style="max-width:100px;margin:0 auto;display:block;image-rendering:pixelated;">' +
           '</div>';
         elDesktop.appendChild(conWin);
-        windows.set(id, { state: 'closed', prevRect: null, el: conWin, taskbarBtn: null });
+        registerWindow(id, conWin);
       } else if (project.type === 'cavaro') {
-        VALID_WINDOWS.add(id);
         var cavaroWin = document.createElement('div');
         cavaroWin.id = id;
         cavaroWin.className = 'window';
@@ -1569,13 +1570,12 @@
           '</div>' +
           '<div class="status-bar"><p class="status-bar-field">Ln 1, Col 1</p></div>';
         elDesktop.appendChild(cavaroWin);
-        windows.set(id, { state: 'closed', prevRect: null, el: cavaroWin, taskbarBtn: null });
+        registerWindow(id, cavaroWin);
       } else if (project.type === 'link') {
         // External link — no window, just open URL on double-click
         // We'll handle this in the icon click handler
       } else {
         // Standard project window from template
-        VALID_WINDOWS.add(id);
         var clone = template.content.cloneNode(true);
         var winEl = clone.querySelector('.window');
         winEl.id = id;
@@ -1616,8 +1616,7 @@
         statusField.textContent = 'Last updated: ' + project.updated;
 
         elDesktop.appendChild(clone);
-        var el = document.getElementById(id);
-        windows.set(id, { state: 'closed', prevRect: null, el: el, taskbarBtn: null });
+        registerWindow(id, document.getElementById(id));
       }
 
       // Create desktop icon (for ALL project types)
@@ -1680,11 +1679,8 @@
   function registerSystemWindows() {
     SYSTEM_WINDOWS.forEach(function(name) {
       var id = 'window-' + name;
-      VALID_WINDOWS.add(id);
       var el = document.getElementById(id);
-      if (el) {
-        windows.set(id, { state: 'closed', prevRect: null, el: el, taskbarBtn: null });
-      }
+      if (el) registerWindow(id, el);
     });
   }
 
@@ -2088,8 +2084,7 @@
       '<div class="window-body" role="document"' + bodyStyle + '>' + bodyHtml + '</div>';
 
     elDesktop.appendChild(win);
-    VALID_WINDOWS.add(id);
-    windows.set(id, { state: 'closed', prevRect: null, el: win, taskbarBtn: null, transient: !!opts.transient });
+    registerWindow(id, win, { transient: !!opts.transient });
     openWindow(id);
   }
 
@@ -2100,25 +2095,8 @@
   }
 
   function launchMinesweeper() {
-    var msStyle =
-      '#ms-app button { box-sizing: border-box; cursor: pointer; min-width: auto; min-height: auto; padding: 0; box-shadow: none; text-shadow: none; color: #000; }' +
-      '#ms-app { font-family: "MS Sans Serif", Arial, sans-serif; font-size: 12px; user-select: none; display: flex; flex-direction: column; align-items: center; }' +
-      '#ms-app #header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; background: #c0c0c0; border: 2px inset #fff; padding: 4px 8px; width: fit-content; }' +
-      '#ms-app .counter { background: #000; color: #f00; font-family: monospace; font-size: 18px; padding: 2px 6px; min-width: 40px; text-align: right; border: 1px inset #808080; }' +
-      '#ms-app #face { font-size: 18px; cursor: pointer; border: 2px outset #fff; background: #c0c0c0; width: 28px; height: 28px; line-height: 28px; text-align: center; }' +
-      '#ms-app #face:active { border-style: inset; }' +
-      '#ms-app #grid { display: grid; grid-template-columns: repeat(9, 24px); border: 3px inset #808080; }' +
-      '#ms-app .cell { width: 24px; height: 24px; border: 2px outset #fff; background: #c0c0c0; text-align: center; line-height: 20px; font-weight: bold; font-size: 12px; cursor: pointer; }' +
-      '#ms-app .cell.revealed { border: 1px solid #808080; cursor: default; }' +
-      '#ms-app .cell.mine-hit { background: #f00; }' +
-      '#ms-app .c1 { color: #0000ff; } #ms-app .c2 { color: #008000; } #ms-app .c3 { color: #ff0000; }' +
-      '#ms-app .c4 { color: #000080; } #ms-app .c5 { color: #800000; } #ms-app .c6 { color: #008080; }' +
-      '#ms-app .c7 { color: #000; } #ms-app .c8 { color: #808080; }' +
-      '#ms-app #msg { margin-top: 6px; font-weight: bold; height: 16px; }';
-
     var msHtml =
       '<div id="ms-app">' +
-        '<style>' + msStyle + '</style>' +
         '<div id="header">' +
           '<div class="counter" id="mine-count">010</div>' +
           '<button id="face">&#128578;</button>' +
@@ -2136,9 +2114,33 @@
     document.getElementById('ms-app').appendChild(script);
   }
 
+  // Lazy-load apps/help/book.js on first launch. The file is ~63KB of static
+  // page content and most visitors never open Help — paying that cost on every
+  // cold load is wasteful. Concurrent launches share one load via the promise.
+  var bookLoadPromise = null;
+  function ensureBookLoaded() {
+    if (window.BOOK_PAGES) return Promise.resolve();
+    if (bookLoadPromise) return bookLoadPromise;
+    bookLoadPromise = new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'apps/help/book.js';
+      s.onload = function() { resolve(); };
+      s.onerror = function() { bookLoadPromise = null; reject(new Error('book.js failed to load')); };
+      document.head.appendChild(s);
+    });
+    return bookLoadPromise;
+  }
+
   function launchHelpBook() {
+    ensureBookLoaded().then(renderHelpBook).catch(function() {
+      // Soft failure: open the window with a placeholder so the user sees something.
+      renderHelpBook(['<p style="padding:20px;color:#800000;">Help content failed to load. Please check your connection and try again.</p>']);
+    });
+  }
+
+  function renderHelpBook(overridePages) {
     var page = 0;
-    var pages = window.BOOK_PAGES || [];
+    var pages = overridePages || window.BOOK_PAGES || [];
     var total = pages.length;
 
     function navHtml() {
@@ -2196,21 +2198,8 @@
   }
 
   function launchCalculator() {
-    var calcStyle =
-      '#calc-app button { box-sizing: border-box; cursor: pointer; min-width: auto; min-height: auto; padding: 0; box-shadow: none; text-shadow: none; color: #000; }' +
-      '#calc-app { font-family: "MS Sans Serif", Arial, sans-serif; user-select: none; }' +
-      '#calc-app #calc { width: 220px; }' +
-      '#calc-app #display { width: 100%; text-align: right; font-size: 16px; font-family: monospace; padding: 4px 6px; margin-bottom: 6px; background: #fff; border: 2px inset #808080; height: 28px; overflow: hidden; }' +
-      '#calc-app .row { display: flex; gap: 2px; margin-bottom: 2px; }' +
-      '#calc-app button { flex: 1; height: 28px; font-size: 12px; font-family: inherit; border: 2px outset #fff; background: #c0c0c0; cursor: pointer; }' +
-      '#calc-app button:active { border-style: inset; }' +
-      '#calc-app .op { background: #d4d0c8; font-weight: bold; }' +
-      '#calc-app .wide { flex: 2.05; }' +
-      '#calc-app #display-mem { font-size: 10px; height: 14px; color: #444; margin-bottom: 2px; }';
-
     var calcHtml =
       '<div id="calc-app">' +
-        '<style>' + calcStyle + '</style>' +
         '<div id="calc">' +
           '<div id="display-mem"></div>' +
           '<div id="display">0</div>' +
@@ -2260,49 +2249,28 @@
   }
 
   function launchRun() {
-    // Create Run dialog
     var runId = 'window-run-dialog';
     var existing = document.getElementById(runId);
     if (existing) { openWindow(runId); return; }
 
-    var win = document.createElement('div');
-    win.id = runId;
-    win.className = 'window';
-    win.setAttribute('data-state', 'closed');
-    win.setAttribute('data-no-resize', 'true');
-    win.setAttribute('role', 'dialog');
-    win.setAttribute('tabindex', '-1');
-    win.style.width = '320px';
-
-    win.innerHTML =
-      '<div class="title-bar">' +
-        '<div class="title-bar-text">Run</div>' +
-        '<div class="title-bar-controls" role="toolbar" aria-label="Window controls">' +
-          '<button aria-label="Close"></button>' +
-        '</div>' +
+    var bodyHtml =
+      '<div style="font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;margin-bottom:8px;">' +
+        'Type the name of a program, folder, document, or Internet resource, and Windows will open it for you.' +
       '</div>' +
-      '<div class="window-body" role="document" style="padding:12px;background:#c0c0c0;">' +
-        '<div style="font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;margin-bottom:8px;">' +
-          'Type the name of a program, folder, document, or Internet resource, and Windows will open it for you.' +
-        '</div>' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
-          '<label style="font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;font-weight:bold;">Open:</label>' +
-          '<input type="text" value="cmd" readonly style="flex:1;font-size:11px;background:#fff;">' +
-        '</div>' +
-        '<div style="text-align:right;">' +
-          '<button class="run-ok-btn" style="min-width:75px;">OK</button>' +
-          '<button data-close-window="' + runId + '" style="min-width:75px;margin-left:4px;">Cancel</button>' +
-          '<button style="min-width:75px;margin-left:4px;" disabled>Browse...</button>' +
-        '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
+        '<label style="font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;font-weight:bold;">Open:</label>' +
+        '<input type="text" value="cmd" readonly style="flex:1;font-size:11px;background:#fff;">' +
+      '</div>' +
+      '<div style="text-align:right;">' +
+        '<button class="run-ok-btn" style="min-width:75px;">OK</button>' +
+        '<button data-close-window="' + runId + '" style="min-width:75px;margin-left:4px;">Cancel</button>' +
+        '<button style="min-width:75px;margin-left:4px;" disabled>Browse...</button>' +
       '</div>';
 
-    elDesktop.appendChild(win);
-    VALID_WINDOWS.add(runId);
-    windows.set(runId, { state: 'closed', prevRect: null, el: win, taskbarBtn: null });
-    openWindow(runId);
+    createAppWindow(runId, 'Run', bodyHtml,
+      { width: '320px', noResize: true, bodyStyle: 'padding:12px;background:#c0c0c0;' });
 
-    // Scope the OK button query to the dialog itself so the binding cannot collide
-    // with any future window that happens to share the same control class.
+    var win = document.getElementById(runId);
     win.querySelector('.run-ok-btn').addEventListener('click', function() {
       closeWindow(runId);
       launchMatrixTerminal();
