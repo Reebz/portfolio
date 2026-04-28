@@ -253,10 +253,18 @@
     win.state = 'closed';
     win.el.setAttribute('data-state', 'closed');
     win.el.style.transform = '';
-    // Reset any fixed positioning from system tray popups
+    // Reset all positioning so the next open path (cascade or tray-anchored) starts clean.
     win.el.style.position = '';
+    win.el.style.left = '';
     win.el.style.right = '';
+    win.el.style.top = '';
     win.el.style.bottom = '';
+
+    // Reset Contact form Send button so a mid-flight close doesn't brick it on reopen.
+    if (id === 'window-contact') {
+      var sendBtn = win.el.querySelector('button[type="submit"]');
+      if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+    }
 
     // Remove taskbar button
     if (win.taskbarBtn) {
@@ -272,6 +280,14 @@
 
     updateHash(activeWindowId);
     announce(getTitleText(win.el) + ' closed');
+
+    // Transient windows (e.g. Notepad — one DOM node per launch) get fully torn down
+    // so the DOM and the windows registry don't accumulate forever.
+    if (win.transient) {
+      win.el.remove();
+      windows.delete(id);
+      VALID_WINDOWS.delete(id);
+    }
   }
 
   function minimizeWindow(id) {
@@ -1744,7 +1760,11 @@
     if (elCtxDesktop) elCtxDesktop.classList.remove('open');
     if (elCtxTitlebar) elCtxTitlebar.classList.remove('open');
     if (elCtxTaskbar) elCtxTaskbar.classList.remove('open');
-    ctxTargetWindowId = null;
+    // Note: do NOT reset ctxTargetWindowId here. showContextMenu calls hideAllContextMenus
+    // before opening the new menu, which would clobber the id the contextmenu handler
+    // just assigned. The id is short-lived per right-click and gets overwritten on the next
+    // contextmenu event; leaving a stale value between events is harmless because the
+    // action handlers only fire when a [data-action] menu item is clicked.
   }
 
   function setupContextMenus() {
@@ -1779,48 +1799,47 @@
       }
     });
 
-    // Close context menus on any click
-    document.addEventListener('click', function() {
-      hideAllContextMenus();
-    });
-
-    // Context menu actions
+    // Single document-click delegator: capture the target window id BEFORE hiding
+    // menus (hideAllContextMenus nulls ctxTargetWindowId), then dispatch the action,
+    // then always hide menus. Two separate listeners would race — the hide listener
+    // would null the id before the action listener could read it.
     document.addEventListener('click', function(e) {
       var action = e.target.closest('[data-action]');
-      if (!action) return;
-      var act = action.getAttribute('data-action');
-
-      switch (act) {
-        case 'refresh': location.reload(); break;
-        case 'properties': openWindow('window-my-computer'); break;
-        case 'arrange-icons':
-          localStorage.removeItem('icon-positions');
-          layoutIcons();
-          break;
-        case 'ctx-minimize':
-          if (ctxTargetWindowId) minimizeWindow(ctxTargetWindowId);
-          break;
-        case 'ctx-maximize':
-          if (ctxTargetWindowId) toggleMaximize(ctxTargetWindowId);
-          break;
-        case 'ctx-close':
-          if (ctxTargetWindowId) closeWindow(ctxTargetWindowId);
-          break;
-        case 'cascade-windows':
-          var idx = 0;
-          windows.forEach(function(win, id) {
-            if (win.state === 'open' || win.state === 'maximized') {
-              var offset = 30 + (idx * 22);
-              win.el.style.top = offset + 'px';
-              win.el.style.left = offset + 'px';
-              bringToFront(id);
-              idx++;
-            }
-          });
-          break;
-        case 'show-desktop':
-          showDesktop();
-          break;
+      var targetId = ctxTargetWindowId;
+      if (action) {
+        var act = action.getAttribute('data-action');
+        switch (act) {
+          case 'refresh': location.reload(); break;
+          case 'properties': openWindow('window-my-computer'); break;
+          case 'arrange-icons':
+            localStorage.removeItem('icon-positions');
+            layoutIcons();
+            break;
+          case 'ctx-minimize':
+            if (targetId) minimizeWindow(targetId);
+            break;
+          case 'ctx-maximize':
+            if (targetId) toggleMaximize(targetId);
+            break;
+          case 'ctx-close':
+            if (targetId) closeWindow(targetId);
+            break;
+          case 'cascade-windows':
+            var idx = 0;
+            windows.forEach(function(win, id) {
+              if (win.state === 'open' || win.state === 'maximized') {
+                var offset = 30 + (idx * 22);
+                win.el.style.top = offset + 'px';
+                win.el.style.left = offset + 'px';
+                bringToFront(id);
+                idx++;
+              }
+            });
+            break;
+          case 'show-desktop':
+            showDesktop();
+            break;
+        }
       }
       hideAllContextMenus();
     });
@@ -2028,7 +2047,7 @@
 
     elDesktop.appendChild(win);
     VALID_WINDOWS.add(id);
-    windows.set(id, { state: 'closed', prevRect: null, el: win, taskbarBtn: null });
+    windows.set(id, { state: 'closed', prevRect: null, el: win, taskbarBtn: null, transient: !!opts.transient });
     openWindow(id);
   }
 
@@ -2190,14 +2209,12 @@
     document.getElementById('calc-app').appendChild(script);
   }
 
-  var notepadCounter = 0;
   function launchNotepad() {
-    notepadCounter++;
-    var id = 'window-notepad-' + notepadCounter;
+    var id = 'window-notepad-' + Date.now();
     createAppWindow(id, 'Untitled - Notepad',
       '<div class="notepad-menu-bar" aria-hidden="true"><span>File</span><span>Edit</span><span>Format</span><span>Help</span></div>' +
       '<textarea style="width:100%;flex:1;border:none;padding:4px;font-family:\'Lucida Console\',\'Courier New\',monospace;font-size:12px;resize:none;box-sizing:border-box;" placeholder=""></textarea>',
-      { width: '400px', height: '300px', bodyStyle: 'display:flex;flex-direction:column;padding:0;' });
+      { width: '400px', height: '300px', bodyStyle: 'display:flex;flex-direction:column;padding:0;', transient: true });
   }
 
   function launchRun() {
@@ -2231,7 +2248,7 @@
           '<input type="text" value="cmd" readonly style="flex:1;font-size:11px;background:#fff;">' +
         '</div>' +
         '<div style="text-align:right;">' +
-          '<button id="run-ok-btn" style="min-width:75px;">OK</button>' +
+          '<button class="run-ok-btn" style="min-width:75px;">OK</button>' +
           '<button data-close-window="' + runId + '" style="min-width:75px;margin-left:4px;">Cancel</button>' +
           '<button style="min-width:75px;margin-left:4px;" disabled>Browse...</button>' +
         '</div>' +
@@ -2242,8 +2259,9 @@
     windows.set(runId, { state: 'closed', prevRect: null, el: win, taskbarBtn: null });
     openWindow(runId);
 
-    // Wire OK button
-    document.getElementById('run-ok-btn').addEventListener('click', function() {
+    // Scope the OK button query to the dialog itself so the binding cannot collide
+    // with any future window that happens to share the same control class.
+    win.querySelector('.run-ok-btn').addEventListener('click', function() {
       closeWindow(runId);
       launchMatrixTerminal();
     });
