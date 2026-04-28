@@ -1,0 +1,62 @@
+#calc-app button {
+  box-sizing: border-box;
+  cursor: pointer;
+  min-width: auto;
+  min-height: auto;
+  padding: 0;
+  box-shadow: none;
+  text-shadow: none;
+  color: #000;
+}
+
+#calc-app {
+  font-family: "MS Sans Serif", Arial, sans-serif;
+  user-select: none;
+}
+
+#calc-app #calc { width: 220px; }
+
+#calc-app #display {
+  width: 100%;
+  text-align: right;
+  font-size: 16px;
+  font-family: monospace;
+  padding: 4px 6px;
+  margin-bottom: 6px;
+  background: #fff;
+  border: 2px inset #808080;
+  height: 28px;
+  overflow: hidden;
+}
+
+#calc-app .row {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+#calc-app button {
+  flex: 1;
+  height: 28px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 2px outset #fff;
+  background: #c0c0c0;
+  cursor: pointer;
+}
+
+#calc-app button:active { border-style: inset; }
+
+#calc-app .op {
+  background: #d4d0c8;
+  font-weight: bold;
+}
+
+#calc-app .wide { flex: 2.05; }
+
+#calc-app #display-mem {
+  font-size: 10px;
+  height: 14px;
+  color: #444;
+  margin-bottom: 2px;
+}

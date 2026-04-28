@@ -21,7 +21,6 @@
   --taskbar-height: 28px;
   --icon-size: 48px;
   --icon-cell-width: 80px;
-  --icon-cell-height: 90px;
 }
 
 /* === Win98 Cursors === */
@@ -891,14 +890,6 @@ a:focus-visible,
   border: none;
   border-top: 1px solid var(--win98-grey);
   margin: 8px 0;
-}
-
-.sysprop-unavailable {
-  text-align: center;
-  color: var(--win98-grey);
-  margin-top: 72px;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  font-size: 11px;
 }
 
 .sysprop-buttons {
