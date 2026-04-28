@@ -653,13 +653,33 @@
     }
   }
 
+  // Hash deep-links to windows that aren't created until their launcher runs
+  // need a way to bring those windows into existence on first reach. This map
+  // is the single source of truth for window-id -> launcher mappings; entries
+  // here can be opened cold from a URL hash.
+  function getLaunchableWindowMap() {
+    return {
+      'window-paint': launchPaint,
+      'window-calculator': launchCalculator,
+      'window-minesweeper': launchMinesweeper,
+      'window-help-book': launchHelpBook,
+      'window-run-dialog': launchRun,
+      'window-napster': launchNapster,
+      'window-icq': launchICQ,
+    };
+  }
+
   function applyHashState() {
     var hash = window.location.hash.slice(1);
-    if (hash && VALID_WINDOWS.has(hash)) {
-      isHandlingHash = true;
+    if (!hash) return;
+    isHandlingHash = true;
+    if (VALID_WINDOWS.has(hash)) {
       openWindow(hash);
-      isHandlingHash = false;
+    } else {
+      var launchers = getLaunchableWindowMap();
+      if (launchers[hash]) launchers[hash]();
     }
+    isHandlingHash = false;
   }
 
   var hashDebounce = null;
