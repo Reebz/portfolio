@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { test, expect } = require('@playwright/test');
 
 test.describe('BIOS Boot', () => {
@@ -60,30 +62,29 @@ test.describe('Desktop', () => {
   });
 
   test('window can be closed', async ({ page }) => {
-    const icon = page.locator('.desktop-icon').first();
-    await icon.dblclick();
+    const aboutIcon = page.locator('[data-window-id="window-about"]');
+    await aboutIcon.dblclick();
     await page.waitForTimeout(400);
-    const closeBtn = page.locator('.window[data-state="open"] [aria-label="Close"]').first();
-    await closeBtn.click();
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    await page.click('#window-about [aria-label="Close"]');
     await page.waitForTimeout(200);
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'closed');
   });
 
   test('window can be minimized and restored', async ({ page }) => {
-    const icon = page.locator('.desktop-icon').first();
-    await icon.dblclick();
+    // Use a window known to have a Minimize button (Guestbook is non-modal)
+    const guestbookIcon = page.locator('[data-window-id="window-guestbook"]');
+    await guestbookIcon.dblclick();
     await page.waitForTimeout(400);
-    // Minimize
-    const minBtn = page.locator('.window[data-state="open"] [aria-label="Minimize"]').first();
-    if (await minBtn.count() > 0) {
-      await minBtn.click();
-      await page.waitForTimeout(200);
-      // Should have taskbar button
-      const taskbarBtn = page.locator('.taskbar-window-btn').first();
-      await expect(taskbarBtn).toBeVisible();
-      // Click taskbar button to restore
-      await taskbarBtn.click();
-      await page.waitForTimeout(200);
-    }
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    await page.click('#window-guestbook [aria-label="Minimize"]');
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'minimized');
+    const taskbarBtn = page.locator('.taskbar-window-btn').first();
+    await expect(taskbarBtn).toBeVisible();
+    await taskbarBtn.click();
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
   });
 
   test('right-click shows context menu', async ({ page }) => {
@@ -178,29 +179,26 @@ test.describe('Apps', () => {
 
   test('Calculator launches', async ({ page }) => {
     await page.click('#start-button');
-    await page.waitForTimeout(200);
-    // Hover over Programs to open submenu
-    await page.hover('text=Programs');
-    await page.waitForTimeout(400);
-    await page.hover('text=Accessories');
-    await page.waitForTimeout(400);
-    const calcBtn = page.locator('[data-app="calculator"]');
-    await calcBtn.click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('#window-calculator')).toBeVisible();
+    // Wait for the menu to actually open instead of magic-number sleeps that
+    // race the 350ms openSubmenu delay in desktop.js.
+    await expect(page.locator('#start-menu')).toHaveClass(/open/);
+    await page.hover('[role="menuitem"]:has-text("Programs")');
+    await expect(page.locator('.has-submenu.submenu-open .start-submenu').first()).toBeVisible();
+    await page.hover('[role="menuitem"]:has-text("Accessories")');
+    await expect(page.locator('[data-app="calculator"]')).toBeVisible();
+    await page.click('[data-app="calculator"]');
+    await expect(page.locator('#window-calculator')).toHaveAttribute('data-state', 'open');
   });
 
   test('Minesweeper launches', async ({ page }) => {
     await page.click('#start-button');
-    await page.waitForTimeout(200);
-    await page.hover('text=Programs');
-    await page.waitForTimeout(400);
-    await page.hover('text=Games');
-    await page.waitForTimeout(400);
-    const mineBtn = page.locator('[data-app="minesweeper"]');
-    await mineBtn.click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('#window-minesweeper')).toBeVisible();
+    await expect(page.locator('#start-menu')).toHaveClass(/open/);
+    await page.hover('[role="menuitem"]:has-text("Programs")');
+    await expect(page.locator('.has-submenu.submenu-open .start-submenu').first()).toBeVisible();
+    await page.hover('[role="menuitem"]:has-text("Games")');
+    await expect(page.locator('[data-app="minesweeper"]')).toBeVisible();
+    await page.click('[data-app="minesweeper"]');
+    await expect(page.locator('#window-minesweeper')).toHaveAttribute('data-state', 'open');
   });
 
   test('Run dialog opens', async ({ page }) => {
@@ -232,22 +230,28 @@ test.describe('Shut Down', () => {
 });
 
 test.describe('404 Page', () => {
-  test('shows error dialog', async ({ page }) => {
-    await page.goto('/nonexistent-page');
-    // GitHub Pages serves 404.html for unknown paths
-    // Locally with serve, this may not work the same way
-    // Just check the page loads without errors
+  test('shows the Win98 error dialog', async ({ page }) => {
+    // npx serve falls back to index.html for unknown paths, so we can't reach
+    // 404.html through routing in tests. Load the file content directly to
+    // verify its structure and copy stay correct.
+    const html = fs.readFileSync(path.join(__dirname, '..', '404.html'), 'utf8');
+    await page.setContent(html);
+    await expect(page.locator('.error-dialog')).toBeVisible();
+    await expect(page.locator('#error-desc')).toContainText(/Page Fault \(404\)/);
   });
 });
 
 test.describe('Mobile View', () => {
-  test('shows DOS terminal on mobile', async ({ page }) => {
-    // Simulate touch device
-    await page.setViewportSize({ width: 375, height: 667 });
+  test('shows DOS terminal on touch + coarse-pointer device', async ({ browser }) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 375, height: 667 },
+    });
+    const page = await context.newPage();
     await page.goto('/');
     await page.waitForTimeout(500);
-    // On touch devices, #mobile-view should be visible
-    // But Playwright doesn't emulate pointer:coarse by default
-    // This test verifies the page loads on small viewport without errors
+    await expect(page.locator('#mobile-view')).toBeVisible();
+    await context.close();
   });
 });
