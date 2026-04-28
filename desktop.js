@@ -838,10 +838,25 @@
   // GoatCounter exposes a public TOTAL.json counter once "Allow adding visitor
   // counts on your website" is enabled in the site settings. We render the
   // cached value first for instant paint, then refresh from the live endpoint
-  // and fall back to the legacy localStorage-incrementing counter if both the
-  // cache and the network are unavailable.
+  // (gated by a session-local 30-minute timestamp matching GoatCounter's server
+  // cache window) and fall back to the legacy localStorage-incrementing counter
+  // if both the cache and the network are unavailable.
   var COUNTER_URL = 'https://reebz.goatcounter.com/counter/TOTAL.json';
   var COUNTER_CACHE_KEY = 'visitor-count-cache';
+  var COUNTER_FETCHED_AT_KEY = 'counter-fetched-at';
+  var COUNTER_FETCH_TTL_MS = 30 * 60 * 1000;
+
+  // Single source of formatting truth so cached, live-fetched, and fallback
+  // values all render identically. Accepts a number, a numeric string, or an
+  // already-formatted "1,234" string. Returns null for anything we can't parse,
+  // which the callers treat as a signal to keep the prior display.
+  function formatCount(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'string' && /^\d{1,3}(,\d{3})+$/.test(value)) return value;
+    var n = typeof value === 'number' ? value : parseInt(String(value).replace(/,/g, ''), 10);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n.toLocaleString();
+  }
 
   function renderVisitorCount(value) {
     if (elVisitorCounter) elVisitorCounter.textContent = value;
@@ -850,29 +865,36 @@
   }
 
   function localFallbackCount() {
-    var count = parseInt(localStorage.getItem('visitor-count')) || INITIAL_VISITOR_COUNT;
+    var count = parseInt(localStorage.getItem('visitor-count')) || 3;
     if (!sessionStorage.getItem('counted')) {
       count++;
       sessionStorage.setItem('counted', '1');
       localStorage.setItem('visitor-count', count);
     }
-    return count.toLocaleString();
+    return formatCount(count);
   }
 
   function initVisitorCounter() {
     if (!elVisitorCounter) return;
 
-    var cached = localStorage.getItem(COUNTER_CACHE_KEY);
+    var cached = formatCount(localStorage.getItem(COUNTER_CACHE_KEY));
     renderVisitorCount(cached || localFallbackCount());
 
     if (typeof fetch !== 'function') return;
-    fetch(COUNTER_URL, { cache: 'no-cache' })
+
+    // Skip the network round-trip if we already fetched within the server cache window.
+    var fetchedAt = parseInt(sessionStorage.getItem(COUNTER_FETCHED_AT_KEY), 10);
+    if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt < COUNTER_FETCH_TTL_MS) return;
+
+    fetch(COUNTER_URL)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(data) {
-        if (data && typeof data.count === 'string' && data.count.length) {
-          localStorage.setItem(COUNTER_CACHE_KEY, data.count);
-          renderVisitorCount(data.count);
-        }
+        if (!data) return;
+        var formatted = formatCount(data.count);
+        if (!formatted) return;
+        localStorage.setItem(COUNTER_CACHE_KEY, formatted);
+        sessionStorage.setItem(COUNTER_FETCHED_AT_KEY, String(Date.now()));
+        renderVisitorCount(formatted);
       })
       .catch(function() { /* keep cached/fallback display */ });
   }
