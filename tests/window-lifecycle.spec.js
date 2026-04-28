@@ -7,6 +7,49 @@ const BOOTED = async ({ page }) => {
   await page.waitForTimeout(300);
 };
 
+test.describe('Window drag, resize, z-index', () => {
+  test.beforeEach(BOOTED);
+
+  test('window can be dragged by its title bar', async ({ page }) => {
+    const guestbookIcon = page.locator('[data-window-id="window-guestbook"]');
+    await guestbookIcon.dblclick();
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    const titleBar = page.locator('#window-guestbook .title-bar');
+    const startBox = await titleBar.boundingBox();
+    expect(startBox).not.toBeNull();
+    // Drag 80px right and 60px down
+    await page.mouse.move(startBox.x + 30, startBox.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(startBox.x + 110, startBox.y + 70, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    const endBox = await titleBar.boundingBox();
+    // Window moved at least 40px on each axis (allowing for body zoom factor)
+    expect(endBox.x - startBox.x).toBeGreaterThan(20);
+    expect(endBox.y - startBox.y).toBeGreaterThan(20);
+  });
+
+  test('clicking a back window brings it to the front', async ({ page }) => {
+    // Open two windows. Use the hash-deep-link route so we don't have to
+    // dblclick icons that the first window's body may obscure.
+    await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => { window.location.hash = '#window-about'; });
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    const guestbookZ = await page.evaluate(() => parseInt(window.getComputedStyle(document.getElementById('window-guestbook')).zIndex, 10));
+    const aboutZ = await page.evaluate(() => parseInt(window.getComputedStyle(document.getElementById('window-about')).zIndex, 10));
+    expect(aboutZ).toBeGreaterThan(guestbookZ);
+    // Force-click the back window's title bar (about may overlap it).
+    await page.locator('#window-guestbook .title-bar').click({ force: true });
+    await page.waitForTimeout(100);
+    const guestbookZ2 = await page.evaluate(() => parseInt(window.getComputedStyle(document.getElementById('window-guestbook')).zIndex, 10));
+    const aboutZ2 = await page.evaluate(() => parseInt(window.getComputedStyle(document.getElementById('window-about')).zIndex, 10));
+    expect(guestbookZ2).toBeGreaterThan(aboutZ2);
+  });
+});
+
 test.describe('U1 — HIGH-severity bug fixes', () => {
   test.beforeEach(BOOTED);
 

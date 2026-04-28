@@ -733,8 +733,30 @@
   // --- Clock (Sydney, Australia timezone) ---
   var TIMEZONE = 'Australia/Sydney';
 
+  // Build a Date-equivalent { hours, minutes } for the configured timezone via
+  // Intl.DateTimeFormat.formatToParts. The previous toLocaleString round-trip
+  // was implementation-defined for non-ISO date strings and could degrade in
+  // some locales/engines.
+  function getSydneyTimeParts() {
+    var parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: TIMEZONE,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date());
+    var hour = 0, minute = 0;
+    parts.forEach(function(p) {
+      if (p.type === 'hour') hour = parseInt(p.value, 10) % 24;
+      else if (p.type === 'minute') minute = parseInt(p.value, 10);
+    });
+    return { hours: hour, minutes: minute };
+  }
+
   function getSydneyTime() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: TIMEZONE }));
+    var p = getSydneyTimeParts();
+    var d = new Date();
+    d.setHours(p.hours, p.minutes, 0, 0);
+    return d;
   }
 
   function formatTime12h(date) {
@@ -1317,11 +1339,12 @@
 
     // Keyboard
     document.addEventListener('keydown', function(e) {
-      // Escape closes start menu first, then topmost window
+      // Escape closes start menu first (including any open submenus), then topmost window.
       if (e.key === 'Escape') {
         if (elStartMenu.classList.contains('open')) {
           elStartMenu.classList.remove('open');
           elStartButton.setAttribute('aria-expanded', 'false');
+          closeAllSubmenus();
           elStartButton.focus();
           return;
         }
@@ -2155,6 +2178,10 @@
         '</div>';
     }
 
+    // render() owns both the DOM and the event bindings, called once on initial
+    // setup and again on every Prev/Next click. Previously the initial bindings
+    // also lived in a post-createAppWindow block, which made the binding logic
+    // live in two places — easy to drift on a future tweak.
     function render() {
       var win = document.getElementById('window-help-book');
       if (!win) return;
@@ -2173,28 +2200,12 @@
       if (next) next.addEventListener('click', function() { if (page < total - 1) { page++; render(); } });
     }
 
-    var bodyContent =
-      '<div id="help-page" style="flex:1;overflow-y:auto;padding:20px 24px;' +
-        'font-family:Georgia,\'Times New Roman\',serif;font-size:12px;' +
-        'background:#fff;text-align:center;">' +
-        pages[0] +
-      '</div>' +
-      navHtml();
-
-    createAppWindow('window-help-book', 'The Way of Code - Help', bodyContent, {
+    createAppWindow('window-help-book', 'The Way of Code - Help', '', {
       width: '400px',
       height: '600px',
       bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;'
     });
-
-    // Attach navigation after window is created
-    var win = document.getElementById('window-help-book');
-    if (win) {
-      var prev = win.querySelector('#help-prev');
-      var next = win.querySelector('#help-next');
-      if (prev) prev.addEventListener('click', function() { if (page > 0) { page--; render(); } });
-      if (next) next.addEventListener('click', function() { if (page < total - 1) { page++; render(); } });
-    }
+    render();
   }
 
   function launchCalculator() {
