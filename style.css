@@ -577,11 +577,16 @@ body {
 
 /* === Mobile / Touch ===
    Entry point for responsive rules on touch devices (no hover + coarse pointer).
-   Three breakpoints (phone-portrait, phone-landscape, tablet) ladder over a
-   single split so each tier can declare its own custom-property values.
-   NEVER use max-width alone for touch detection — desktop browsers narrowed
-   to <768px must keep the full experience (see docs/ideation 2026-04-29 #4). */
-@media (hover: none) and (pointer: coarse) {
+   Two breakpoints (phone-portrait, phone-landscape) cover phones. Tablets
+   (iPad portrait 768+) inherit the desktop styling — large touch screens
+   render the full Win98 experience because at 768+ everything fits.
+
+   Touch-detection contract: `(hover: none) and (pointer: coarse) and
+   (max-width: 767px)`. The max-width clause is paired with hover/pointer
+   so it never false-positive matches narrow mouse browsers (origin
+   learning #4 — desktop windows narrowed to <768px keep desktop styling
+   because they still have hover:hover + pointer:fine). */
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
   html, body {
     height: auto;
     overflow: auto;
@@ -1153,184 +1158,6 @@ body {
     background-size: 16px 14px;
     background-position: center;
     background-repeat: no-repeat;
-    /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
-    touch-action: manipulation;
-  }
-}
-
-/* --- Tablet (>=768px wide, touch) --- */
-@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
-  :root {
-    --icon-grid-cols: 8;
-    --taskbar-min-height: 44px;
-    --window-max-w: 96vw;
-    --window-max-h: calc(100vh - var(--taskbar-min-height) - 24px);
-    --window-margin: 12px;
-  }
-  html, body { height: 100%; overflow: hidden; zoom: 1; }
-  .title-bar, .desktop-icon { touch-action: none; }
-  #desktop { touch-action: none; }
-  #desktop > .window { touch-action: auto; }
-
-  /* B4: icon grid — true grid layout on tablet too. layoutIcons() bails
-     on touch (no JS placement), so CSS Grid is the sole authority. 8 cols
-     at 768-834px ≈ ~95-100px per column. 14 icons fits in 2 rows easily.
-     Tablet keeps the larger 32×32 icon visual (extra room vs phone). */
-  #icon-grid {
-    display: grid;
-    grid-template-columns: repeat(var(--icon-grid-cols), 1fr);
-    grid-auto-rows: minmax(80px, auto);
-    align-content: start;
-    gap: 6px;
-    padding: 8px;
-    /* Constrain to viewport-minus-taskbar; no overflow. */
-    height: calc(100% - var(--taskbar-min-height) - 4px);
-    overflow: hidden;
-  }
-  .desktop-icon {
-    position: static;
-    width: auto;
-    min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
-    min-height: 64px;
-    flex-direction: column;     /* matches desktop pattern */
-    justify-content: flex-start;
-    align-items: center;
-    gap: 4px;
-    padding: 6px;
-    touch-action: manipulation;
-  }
-  .desktop-icon img {
-    /* Tablet has room for the slightly larger 32×32 icon */
-    width: 32px;
-    height: 32px;
-  }
-  .desktop-icon-label {
-    text-align: center;
-    -webkit-line-clamp: 2;
-    line-height: 1.2;
-    max-width: 100%;
-  }
-
-  /* U3: taskbar — 44px hit floor (visual chrome preserved). */
-  #taskbar {
-    min-height: calc(var(--taskbar-min-height) + 4px);
-    height: auto;
-    padding: 2px 4px;
-  }
-  #start-button {
-    min-height: 44px;
-    height: auto;
-    padding: 4px 12px;
-  }
-  #taskbar-buttons {
-    overflow-x: auto;
-    overflow-y: hidden;
-    flex-wrap: nowrap;
-    scrollbar-width: none;
-  }
-  #taskbar-buttons::-webkit-scrollbar { display: none; }
-  .taskbar-window-btn {
-    min-height: 44px;
-    height: auto;
-    flex-shrink: 0;
-    flex-basis: 140px;
-    padding: 4px 8px;
-  }
-  /* B7: hide quick-launch — reclaims horizontal taskbar room for window chips */
-  #quick-launch { display: none; }
-  #system-tray {
-    min-height: 44px;
-    height: auto;
-  }
-  #visitor-counter,
-  #clock {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-  }
-
-  /* B6: start menu redesign — tablet keeps the native Win98 cascade
-     because there's horizontal room for floating right-side submenus.
-     Phone breakpoints (above) use a slide-in pattern; tablet does not
-     need it. Only ergonomic tweaks (≥44px hit targets) here. */
-  #start-menu {
-    bottom: var(--taskbar-min-height);
-    top: auto;
-    max-width: 95vw;
-    max-height: 80vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-  .start-menu-item {
-    min-height: 44px;
-    height: auto;
-    padding: 10px 12px;
-  }
-  .start-menu-item-lg {
-    min-height: 48px !important;
-    height: auto !important;
-  }
-  /* On tablet the Win98 cascade (.start-submenu { left: 100% }) stays
-     in place — no override needed. */
-
-  /* U4: windows — tablet uses a 96vw cap so the desktop-grade chrome
-     stays intact. data-no-resize dialogs still keep native widths. */
-  .window {
-    min-width: auto;
-    max-width: var(--window-max-w);
-    max-height: var(--window-max-h);
-    margin: var(--window-margin);
-  }
-  .window-body { margin: 0; padding: 4px; }
-
-  /* U4: text floors — 14px body / 16px Tahoma inputs. */
-  .window-body, .window-body * { font-size: max(14px, 1em); }
-  .window-body input,
-  .window-body textarea,
-  .window-body [contenteditable] {
-    /* !important needed to beat inline `style="font-size:11px"` on
-       legacy Win98-styled inputs (Contact form: index.html:133/137/141/145).
-       iOS Safari triggers auto-zoom-on-focus when computed font-size < 16
-       at the moment of focus; an inline style would otherwise win. */
-    font-size: 16px !important;
-    font-family: Tahoma, sans-serif !important;
-  }
-
-  /* B2: title-bar height bump — replaces U5 padding+content-box.
-     Bumps title-bar height to 44px on mobile so button visuals can fill
-     the WCAG 2.5.5 hit area cleanly (no transparent padding ring revealing
-     the title-bar blue). Button visuals scale to 30x30. touch-action:
-     manipulation restores iOS tap-to-click synthesis suppressed by the
-     inherited .title-bar { touch-action: none } from U2.
-     See phone-portrait block for full rationale. Tablet shares the same
-     control geometry. */
-  .title-bar {
-    height: 44px;
-    padding: 4px 6px;
-    align-items: center;
-    box-sizing: border-box;
-  }
-  .title-bar-text {
-    font-size: 14px;
-    line-height: 1;
-  }
-  .title-bar-controls {
-    gap: 4px;
-    align-items: center;
-  }
-  .title-bar-controls button {
-    /* Reset U5 box-sizing/padding/clip approach */
-    box-sizing: border-box;
-    min-width: 30px;
-    min-height: 30px;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    background-clip: border-box;
-    background-origin: border-box;
-    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
-    background-size: 16px 14px;
-    background-position: center;
     background-repeat: no-repeat;
     /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
     touch-action: manipulation;

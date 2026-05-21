@@ -25,6 +25,9 @@ module.exports = defineConfig({
         baseURL: 'http://localhost:8080',
         screenshot: 'only-on-failure',
       },
+      // Mobile mode is now phones-only — touch + max-width 767px. Tablets
+      // (768+) inherit desktop styling per the touch-detection contract
+      // rewrite in style.css/desktop.js/boot.js.
       testMatch: /tests\/mobile-.+\.spec\.js$/,
     },
     {
@@ -34,7 +37,10 @@ module.exports = defineConfig({
         baseURL: 'http://localhost:8080',
         screenshot: 'only-on-failure',
       },
-      testMatch: /tests\/mobile-.+\.spec\.js$/,
+      // Tablets inherit the desktop experience — this project runs only the
+      // tablet-regression spec that proves the inheritance holds (zoom 1.5,
+      // no mobile-specific CSS, native Win98 chrome).
+      testMatch: /tests\/tablet-.+\.spec\.js$/,
     },
   ],
 });
