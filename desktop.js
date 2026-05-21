@@ -1050,8 +1050,35 @@
     var cellW = 80;
     var cellH = 90;
     var padding = 8;
-    var gridHeight = elIconGrid.clientHeight || (window.innerHeight - TASKBAR_HEIGHT);
-    var cols = Math.max(1, Math.floor(gridHeight / cellH));
+    // Use computed grid dimensions; fall back to viewport-minus-taskbar with
+    // a zoom adjustment so iPads (body zoom 1.5) get the correct CSS-pixel
+    // size instead of the unzoomed innerHeight value.
+    var z = getZoom();
+    var gridHeight = elIconGrid.clientHeight || ((window.innerHeight / z) - TASKBAR_HEIGHT);
+    var gridWidth = elIconGrid.clientWidth || (window.innerWidth / z);
+    var rowsPerCol = Math.max(1, Math.floor((gridHeight - padding * 2) / cellH));
+
+    // Saved positions may be stale from a previous session at a different
+    // viewport (e.g., desktop browser → iPad). Validate that every saved
+    // position lands inside the current grid. If any are out of bounds we
+    // discard the whole saved state and re-layout from scratch — this is the
+    // automatic equivalent of right-click → Arrange Icons.
+    if (saved) {
+      var anyOutOfBounds = false;
+      for (var i = 0; i < icons.length; i++) {
+        var id = icons[i].getAttribute('data-window-id') || ('icon-' + i);
+        var p = saved[id];
+        if (!p) continue;
+        if (p.x < 0 || p.y < 0 || p.x + cellW > gridWidth || p.y + cellH > gridHeight) {
+          anyOutOfBounds = true;
+          break;
+        }
+      }
+      if (anyOutOfBounds) {
+        try { localStorage.removeItem('icon-positions'); } catch (e) {}
+        saved = null;
+      }
+    }
 
     icons.forEach(function(icon, i) {
       var id = icon.getAttribute('data-window-id') || ('icon-' + i);
@@ -1060,8 +1087,8 @@
         icon.style.top = saved[id].y + 'px';
       } else {
         // Column-first layout (top to bottom, then next column)
-        var col = Math.floor(i / cols);
-        var row = i % cols;
+        var col = Math.floor(i / rowsPerCol);
+        var row = i % rowsPerCol;
         icon.style.left = (padding + col * cellW) + 'px';
         icon.style.top = (padding + row * cellH) + 'px';
       }
@@ -1632,6 +1659,12 @@
       });
       try { localStorage.removeItem('icon-positions'); } catch (e) {}
     }
+
+    // Re-arrange icons on every viewport change. layoutIcons() validates
+    // saved positions against the new bounds — if any fall outside, the
+    // whole saved state is discarded and icons reflow from scratch. This
+    // is the automatic equivalent of right-click → Arrange Icons.
+    layoutIcons();
 
     lastZoom = currentZoom;
   }
@@ -2732,6 +2765,14 @@
     setupSelectionRect();
     initSubmenus();
     layoutIcons();
+    // First call may run before #icon-grid has settled into its final size
+    // (clientHeight can be 0 mid-paint on some tablets / iPads, which makes
+    // the column-first math fall back to a single tall column). Re-run after
+    // layout settles so icons land correctly regardless of resolution.
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(function() { layoutIcons(); });
+    }
+    window.addEventListener('load', function() { layoutIcons(); }, { once: true });
     setupIconDrag();
 
     // U6: seed lastZoom and bind the resize/orientationchange handler so open
