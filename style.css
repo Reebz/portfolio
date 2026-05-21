@@ -707,22 +707,34 @@ body {
     padding: 4px 0;
   }
 
-  /* U3: start menu — anchors upward from the taskbar, fits viewport,
-     scrolls if content exceeds. Submenu hover converts to tap via JS
-     (initSubmenus extension + .submenu-open class). */
+  /* B6: start menu redesign — Slide-in submenu. ui-ux-pro-max recommended
+     this approach over Compact (still tall narrow column) and Fullscreen
+     overlay (abandons Win98 chrome). Preserves the floating Win98 panel +
+     sidebar stripe at ~70vw width; each submenu slides in from the right
+     covering the parent menu so every level gets the full panel width
+     instead of inline-stacking. A JS-injected "← Back" affordance at the
+     top of each open submenu reverses the slide.
+
+     The slide is achieved with position: absolute / inset: 0 on submenus
+     under #start-menu (which is position: relative) plus transform on the
+     .has-submenu.submenu-open > .start-submenu pair. Overflow on the
+     menu is hidden to clip the off-stage submenus. */
   #start-menu {
     bottom: var(--taskbar-min-height);
     top: auto;
     left: 0;
-    width: auto;
-    max-width: 95vw;
+    width: 70vw;
+    max-width: 320px;
     min-width: 240px;
-    max-height: 80vh;
-    overflow-y: auto;
-    overflow-x: hidden;
+    max-height: 75vh;
+    overflow: hidden; /* clip off-stage submenus */
+    position: fixed;
   }
   .start-menu-items {
     margin-left: 24px;
+    overflow-y: auto;
+    max-height: calc(75vh - 4px);
+    -webkit-overflow-scrolling: touch;
   }
   .start-menu-item {
     min-height: 44px;
@@ -736,19 +748,84 @@ body {
     height: auto !important;
     padding: 8px 12px !important;
   }
-  /* Submenus on touch: stack inline beneath the parent rather than
-     floating right (which would overflow a 390px viewport). The
-     .submenu-open class is toggled by initSubmenus' tap handler. */
-  .start-submenu {
+  /* Override base .has-submenu { position: relative } so submenus are
+     positioned relative to #start-menu (fixed → containing block) rather
+     than each li row — otherwise the slide would only cover one row. */
+  .has-submenu {
     position: static;
-    left: auto;
-    top: auto;
-    width: 100%;
+  }
+  /* Submenus on mobile: slide in from the right covering the parent menu.
+     Position absolute inside #start-menu (the containing block). They
+     occupy the menu area minus the sidebar stripe (left: 24px) so the
+     Win98 chrome shows on each level. Off-stage by default
+     (translateX(110%)); .has-submenu.submenu-open > .start-submenu slides
+     to translateX(0). The base .start-submenu { display: none } rule is
+     overridden to display: flex column so the back-bar + items stack. */
+  .start-submenu {
+    display: flex !important;
+    flex-direction: column;
+    position: absolute;
+    left: 24px; /* preserve sidebar stripe visibility */
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: auto;
     min-width: 0;
-    margin-left: 16px;
+    margin: 0;
+    padding: 2px 0;
+    transform: translateX(110%);
+    transition: transform 0.18s ease-out;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Visual stays as the base Win98 panel — no shadow here because the
+       slide covers the parent and the menu's outer chrome already
+       provides the bevel. */
     box-shadow: none;
     border: none;
-    padding-left: 8px;
+    z-index: 1;
+    /* Off-stage submenus are not tappable; their pointer-events come back
+       on when slid into view (.submenu-open rule below). */
+    pointer-events: none;
+    background: var(--win98-silver);
+  }
+  .has-submenu.submenu-open > .start-submenu {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  /* Nested submenus stack on top so two slides cover progressively. */
+  .start-submenu .start-submenu {
+    left: 0; /* nested submenus cover the parent submenu fully */
+    z-index: 2;
+  }
+  /* Back affordance (injected via JS on first open). Tappable bar at the
+     top of each open submenu — pressing it removes .submenu-open from
+     the parent .has-submenu, sliding the submenu back off-stage. */
+  .start-submenu-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+    background: var(--win98-silver);
+    border: none;
+    border-bottom: 1px solid var(--win98-grey);
+    color: var(--win98-black);
+    cursor: default;
+    width: 100%;
+    text-align: left;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+  .start-submenu-back:active {
+    background: var(--win98-navy);
+    color: var(--win98-white);
+  }
+  .start-submenu-back-arrow {
+    font-size: 14px;
+    line-height: 1;
   }
 
   /* U4: windows — clamp outer size to var(--window-max-w/h) so windows
@@ -914,17 +991,25 @@ body {
     padding: 4px 0;
   }
 
-  /* U3: start menu — opens upward, sized to viewport. */
+  /* B6: start menu redesign — Slide-in submenu. Landscape gets a wider
+     panel (still capped) so the slide-in submenu's full width feels
+     spacious. Same back-affordance pattern as portrait. */
   #start-menu {
     bottom: var(--taskbar-min-height);
     top: auto;
     left: 0;
-    width: auto;
-    max-width: 95vw;
+    width: 50vw;
+    max-width: 360px;
     min-width: 260px;
     max-height: 80vh;
+    overflow: hidden; /* clip off-stage submenus */
+    position: fixed;
+  }
+  .start-menu-items {
+    margin-left: 24px;
     overflow-y: auto;
-    overflow-x: hidden;
+    max-height: calc(80vh - 4px);
+    -webkit-overflow-scrolling: touch;
   }
   .start-menu-item {
     min-height: 44px;
@@ -938,17 +1023,67 @@ body {
     height: auto !important;
     padding: 8px 12px !important;
   }
-  /* Submenus on touch: stack inline beneath the parent. */
-  .start-submenu {
+  /* Override base .has-submenu { position: relative } — see portrait block. */
+  .has-submenu {
     position: static;
-    left: auto;
-    top: auto;
-    width: 100%;
+  }
+  /* Submenus slide in from the right covering the parent. */
+  .start-submenu {
+    display: flex !important;
+    flex-direction: column;
+    position: absolute;
+    left: 24px;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: auto;
     min-width: 0;
-    margin-left: 16px;
+    margin: 0;
+    padding: 2px 0;
+    transform: translateX(110%);
+    transition: transform 0.18s ease-out;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     box-shadow: none;
     border: none;
-    padding-left: 8px;
+    z-index: 1;
+    pointer-events: none;
+    background: var(--win98-silver);
+  }
+  .has-submenu.submenu-open > .start-submenu {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  .start-submenu .start-submenu {
+    left: 0;
+    z-index: 2;
+  }
+  .start-submenu-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+    background: var(--win98-silver);
+    border: none;
+    border-bottom: 1px solid var(--win98-grey);
+    color: var(--win98-black);
+    cursor: default;
+    width: 100%;
+    text-align: left;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+  .start-submenu-back:active {
+    background: var(--win98-navy);
+    color: var(--win98-white);
+  }
+  .start-submenu-back-arrow {
+    font-size: 14px;
+    line-height: 1;
   }
 
   /* U4: windows — same outer-clamp story as portrait; data-no-resize
@@ -1080,8 +1215,10 @@ body {
     min-height: 44px;
   }
 
-  /* U3: start menu — opens upward, 80vh cap. Native 180px width
-     fits well on tablet, so don't force max-w like phone. */
+  /* B6: start menu redesign — tablet keeps the native Win98 cascade
+     because there's horizontal room for floating right-side submenus.
+     Phone breakpoints (above) use a slide-in pattern; tablet does not
+     need it. Only ergonomic tweaks (≥44px hit targets) here. */
   #start-menu {
     bottom: var(--taskbar-min-height);
     top: auto;
@@ -1099,8 +1236,8 @@ body {
     min-height: 48px !important;
     height: auto !important;
   }
-  /* On tablet there's room to keep submenus floating to the right —
-     leave the .start-submenu { left: 100% } default in place. */
+  /* On tablet the Win98 cascade (.start-submenu { left: 100% }) stays
+     in place — no override needed. */
 
   /* U4: windows — tablet uses a 96vw cap so the desktop-grade chrome
      stays intact. data-no-resize dialogs still keep native widths. */
