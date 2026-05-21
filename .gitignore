@@ -27,8 +27,9 @@ playwright-report/
 *.pem
 *.key
 
-# Local-only docs (plans, brainstorms, notes)
-docs/
+# Local-only docs (plans, brainstorms, notes) — except shared runbooks
+docs/*
+!docs/runbooks/
 
 # Agent / assistant metadata (not for public repos)
 .claude/
