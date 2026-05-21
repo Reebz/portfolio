@@ -1542,7 +1542,10 @@
   }
 
   function isMobile() {
-    return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    // Mobile-mode contract: touch input AND small viewport. Tablets (768+)
+    // inherit the desktop experience; the max-width clause pairs with
+    // hover/pointer so narrow desktop browsers never false-positive.
+    return window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches;
   }
 
   // U4: Clamp a window's left/top so its right/bottom edge stays inside the

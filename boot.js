@@ -1,10 +1,12 @@
 ;(function() {
   'use strict';
 
-  // Skip boot on touch devices, reduced motion, hash deep links, or repeat visits
+  // Skip boot on phones (touch + small viewport), reduced motion, hash deep
+  // links, or repeat visits. Tablets (touch + 768+) still run the boot sequence
+  // — their screens are big enough that the full desktop experience works.
   if (sessionStorage.getItem('booted') ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
-      window.matchMedia('(hover: none) and (pointer: coarse)').matches ||
+      window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches ||
       window.location.hash) {
     document.body.classList.remove('booting');
     return;
