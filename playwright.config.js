@@ -19,6 +19,18 @@ module.exports = defineConfig({
       testMatch: /tests\/(?!mobile-).+\.spec\.js$/,
     },
     {
+      name: 'iphone-se',
+      use: {
+        ...devices['iPhone SE'],
+        baseURL: 'http://localhost:8080',
+        screenshot: 'only-on-failure',
+      },
+      // Smallest realistic iOS viewport (375px wide). Same mobile-* spec
+      // coverage as iphone-14; catches breakpoint regressions at the
+      // narrow end of the phone range.
+      testMatch: /tests\/mobile-.+\.spec\.js$/,
+    },
+    {
       name: 'iphone-14',
       use: {
         ...devices['iPhone 14'],
@@ -28,6 +40,18 @@ module.exports = defineConfig({
       // Mobile mode is now phones-only — touch + max-width 767px. Tablets
       // (768+) inherit desktop styling per the touch-detection contract
       // rewrite in style.css/desktop.js/boot.js.
+      testMatch: /tests\/mobile-.+\.spec\.js$/,
+    },
+    {
+      name: 'iphone-14-pro-max',
+      use: {
+        ...devices['iPhone 14 Pro Max'],
+        baseURL: 'http://localhost:8080',
+        screenshot: 'only-on-failure',
+      },
+      // Largest realistic iOS viewport (430px wide). Same mobile-* spec
+      // coverage as iphone-14; catches breakpoint regressions at the
+      // wide end of the phone range.
       testMatch: /tests\/mobile-.+\.spec\.js$/,
     },
     {
