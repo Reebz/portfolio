@@ -859,33 +859,42 @@ body {
     font-family: Tahoma, sans-serif !important;
   }
 
-  /* U5: title bar controls — extend the interactive surface to 44×44
-     per WCAG 2.5.5. Approach: padding extension with background-clip /
-     background-origin: content-box so the vendor 98.css SVG icon
-     (Minimize bar, Maximize square, Close X) renders only in the 16×14
-     content box at the button's center while the click target is the
-     full 44×44. min-width/min-height override the vendor 16/14 floor
-     because padding adds OUTSIDE width with box-sizing: content-box,
-     which would otherwise produce 16+padding boxes.
-
-     Trade-off vs the preferred ::before overlay: each button physically
-     occupies 44×44, so the title bar grows to ~48px on mobile (vendor
-     ~22px on desktop). Chosen here because 44×44 overlays on three
-     adjacent 16×14 buttons (0-2px gaps) all overlap, and the topmost
-     DOM-order overlay (Close) traps clicks intended for siblings. The
-     padding approach gives every button a clean, non-overlapping 44×44
-     surface that aligns with WCAG and survives Playwright's hit-test.
-     Mouse path unchanged — desktop browsers don't match (hover:none) +
-     (coarse). */
+  /* B2: title-bar height bump — replaces U5 padding+content-box.
+     Bumps title-bar height to 44px on mobile so button visuals can fill
+     the WCAG 2.5.5 hit area cleanly (no transparent padding ring revealing
+     the title-bar blue). Button visuals scale to 30x30. touch-action:
+     manipulation restores iOS tap-to-click synthesis suppressed by the
+     inherited .title-bar { touch-action: none } from U2. */
+  .title-bar {
+    height: 44px;
+    padding: 4px 6px;
+    align-items: center;
+    box-sizing: border-box;
+  }
+  .title-bar-text {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .title-bar-controls {
+    gap: 4px;
+    align-items: center;
+  }
   .title-bar-controls button {
-    box-sizing: content-box;
-    min-width: 0;
-    min-height: 0;
-    width: 16px;
-    height: 14px;
-    padding: 15px 14px;
-    background-clip: content-box;
-    background-origin: content-box;
+    /* Reset U5 box-sizing/padding/clip approach */
+    box-sizing: border-box;
+    min-width: 30px;
+    min-height: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background-clip: border-box;
+    background-origin: border-box;
+    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
+    background-size: 16px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+    /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
+    touch-action: manipulation;
   }
 }
 
@@ -1109,18 +1118,43 @@ body {
     font-family: Tahoma, sans-serif !important;
   }
 
-  /* U5: title bar controls — 44×44 hit area via padding extension; SVG
-     icon stays in the 16×14 content box via background-clip:content-box.
+  /* B2: title-bar height bump — replaces U5 padding+content-box.
+     Bumps title-bar height to 44px on mobile so button visuals can fill
+     the WCAG 2.5.5 hit area cleanly (no transparent padding ring revealing
+     the title-bar blue). Button visuals scale to 30x30. touch-action:
+     manipulation restores iOS tap-to-click synthesis suppressed by the
+     inherited .title-bar { touch-action: none } from U2.
      See phone-portrait block above for full rationale. */
+  .title-bar {
+    height: 44px;
+    padding: 4px 6px;
+    align-items: center;
+    box-sizing: border-box;
+  }
+  .title-bar-text {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .title-bar-controls {
+    gap: 4px;
+    align-items: center;
+  }
   .title-bar-controls button {
-    box-sizing: content-box;
-    min-width: 0;
-    min-height: 0;
-    width: 16px;
-    height: 14px;
-    padding: 15px 14px;
-    background-clip: content-box;
-    background-origin: content-box;
+    /* Reset U5 box-sizing/padding/clip approach */
+    box-sizing: border-box;
+    min-width: 30px;
+    min-height: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background-clip: border-box;
+    background-origin: border-box;
+    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
+    background-size: 16px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+    /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
+    touch-action: manipulation;
   }
 }
 
@@ -1262,19 +1296,44 @@ body {
     font-family: Tahoma, sans-serif !important;
   }
 
-  /* U5: title bar controls — 44×44 hit area via padding extension; SVG
-     icon stays in the 16×14 content box via background-clip:content-box.
+  /* B2: title-bar height bump — replaces U5 padding+content-box.
+     Bumps title-bar height to 44px on mobile so button visuals can fill
+     the WCAG 2.5.5 hit area cleanly (no transparent padding ring revealing
+     the title-bar blue). Button visuals scale to 30x30. touch-action:
+     manipulation restores iOS tap-to-click synthesis suppressed by the
+     inherited .title-bar { touch-action: none } from U2.
      See phone-portrait block for full rationale. Tablet shares the same
      control geometry. */
+  .title-bar {
+    height: 44px;
+    padding: 4px 6px;
+    align-items: center;
+    box-sizing: border-box;
+  }
+  .title-bar-text {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .title-bar-controls {
+    gap: 4px;
+    align-items: center;
+  }
   .title-bar-controls button {
-    box-sizing: content-box;
-    min-width: 0;
-    min-height: 0;
-    width: 16px;
-    height: 14px;
-    padding: 15px 14px;
-    background-clip: content-box;
-    background-origin: content-box;
+    /* Reset U5 box-sizing/padding/clip approach */
+    box-sizing: border-box;
+    min-width: 30px;
+    min-height: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background-clip: border-box;
+    background-origin: border-box;
+    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
+    background-size: 16px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+    /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
+    touch-action: manipulation;
   }
 }
 
