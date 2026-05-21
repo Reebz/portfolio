@@ -143,8 +143,11 @@
 }
 
 .icq-toolbar button {
+  /* width/min-width both required to override 98.css `min-width:75px`. */
   width: 22px;
+  min-width: 22px;
   height: 20px;
+  min-height: 20px;
   font-size: 11px;
   padding: 0;
   background: #c0c0c0;

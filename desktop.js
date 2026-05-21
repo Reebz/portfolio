@@ -9,6 +9,10 @@
   var TASKBAR_HEIGHT = 28;
   var MIN_WIN_SIZE = { w: 300, h: 200 };
   var DBLCLICK_DELAY = 300;
+  // Drag clamps: minimum on-screen sliver kept visible during window drag so the
+  // user can always grab the title bar back from the viewport edges.
+  var DRAG_EDGE_MARGIN_X = 100; // px kept visible on the right edge
+  var DRAG_EDGE_MARGIN_Y = 30;  // px kept visible above the taskbar
 
   // --- Project Data ---
   var PROJECTS = [
@@ -126,6 +130,13 @@
   var cascadeIndex = 0;
   var clickTimeouts = new Map(); // iconId -> timeout
 
+  // U6: Viewport-change tracking. lastZoom is the body-zoom factor as of the
+  // last resize/orientationchange tick — used to detect desktop-browser-width
+  // crossings of 768px (where CSS flips body { zoom: 1.5 } ↔ 1.0). The bound
+  // flag guards against double-binding if init() ever runs twice.
+  var lastZoom = null;
+  var resizeHandlerBound = false;
+
   // Single source of truth for registering a window with both the routing whitelist
   // and the lifecycle map. Every window-creation path flows through this.
   function registerWindow(id, el, opts) {
@@ -213,6 +224,17 @@
     win.el.setAttribute('data-state', 'open');
     bringToFront(id);
     win.el.focus();
+
+    // U4: Mobile viewport clamp. After CSS max-width caps the rendered
+    // width, push any window that would extend past the right/bottom
+    // edge back into view. Cascade math doesn't know the viewport, so
+    // wider system windows (Recycle Bin width:500 → max-width clamps to
+    // ~95vw, but offset 30-218 places them off-right at 390×844). Read
+    // computed rect after the open class flips so the measurement is
+    // accurate. Keeps MIN_WIN_SIZE on desktop unchanged.
+    if (isMobile()) {
+      clampWindowToViewport(win.el);
+    }
 
     // Create taskbar button
     createTaskbarButton(id, win);
@@ -548,7 +570,6 @@
   function onDragStart(e, windowId) {
     var win = windows.get(windowId);
     if (!win || win.state === 'maximized') return;
-    if (isMobile()) return;
 
     var rect = win.el.getBoundingClientRect();
     dragState.windowId = windowId;
@@ -582,8 +603,8 @@
     var y = e.clientY - dragState.offsetY;
 
     // Constrain to viewport
-    x = Math.max(0, Math.min(x, window.innerWidth - 100));
-    y = Math.max(0, Math.min(y, window.innerHeight - TASKBAR_HEIGHT - 30));
+    x = Math.max(0, Math.min(x, window.innerWidth - DRAG_EDGE_MARGIN_X));
+    y = Math.max(0, Math.min(y, window.innerHeight - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
 
     dragState.pendingX = x;
     dragState.pendingY = y;
@@ -1016,6 +1037,12 @@
   };
 
   function layoutIcons() {
+    // U3: on touch devices CSS Grid governs icon placement (see the
+    // mobile @media blocks in style.css). Bailing here also skips the
+    // localStorage 'icon-positions' restore — drag-to-rearrange is a
+    // mouse affordance, so persisted positions are mouse-only state.
+    if (isMobile()) return;
+
     var icons = elIconGrid.querySelectorAll('.desktop-icon');
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('icon-positions')); } catch(e) {}
@@ -1139,6 +1166,19 @@
 
   // --- Desktop Icon Events ---
   function handleIconClick(iconEl, windowId) {
+    // U3: single-tap to open on touch (WCAG 2.5.1, no double-tap
+    // dependency). Mouse path keeps the 300ms DBLCLICK_DELAY pattern
+    // so first-click-selects / second-click-opens still works.
+    if (isMobile()) {
+      var linkUrlTouch = iconEl.getAttribute('data-url');
+      if (linkUrlTouch) {
+        window.open(linkUrlTouch, '_blank', 'noopener');
+      } else {
+        openWindow(windowId);
+      }
+      return;
+    }
+
     var existing = clickTimeouts.get(windowId);
     if (existing) {
       // Second click — double-click
@@ -1284,12 +1324,21 @@
 
       if (win.state === 'minimized') {
         restoreWindow(id);
+        // U5: a restored window may sit at a persisted prevRect that's
+        // now off-viewport (e.g., the user dragged it off-edge before
+        // minimizing). Re-check on touch.
+        recoverWindowIfOffScreen(win.el);
       } else if (win.state === 'open' || win.state === 'maximized') {
         if (activeWindowId === id) {
           minimizeWindow(id);
         } else {
           bringToFront(id);
           win.el.focus();
+          // U5: occlusion recovery — if the focused window's title bar
+          // isn't sufficiently visible (off-edge after a drag, behind
+          // chrome), clamp it back into reach. No-op on desktop and
+          // when the title bar is already reachable.
+          recoverWindowIfOffScreen(win.el);
         }
       }
     });
@@ -1496,6 +1545,112 @@
     return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   }
 
+  // U4: Clamp a window's left/top so its right/bottom edge stays inside the
+  // viewport. Called after openWindow sets the cascade position on mobile;
+  // CSS max-width has already clamped the rendered width via the .window
+  // rule inside the touch @media blocks (var(--window-max-w)). We read the
+  // post-clamp bounding rect, then nudge left/top so x + w fits within
+  // (viewport.w - 4) and y + h fits within (viewport.h - taskbar - 4).
+  function clampWindowToViewport(winEl) {
+    if (!winEl) return;
+    var rect = winEl.getBoundingClientRect();
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    // Read the computed taskbar floor (44px on touch) rather than the
+    // desktop 28 — the touch CSS overrides --taskbar-height implicitly via
+    // --taskbar-min-height, so the bottom inset must match what's on-screen.
+    var taskbarEl = document.getElementById('taskbar');
+    var taskbarH = taskbarEl ? taskbarEl.getBoundingClientRect().height : TASKBAR_HEIGHT;
+    var pad = 4;
+    var maxLeft = Math.max(pad, vw - rect.width - pad);
+    var maxTop = Math.max(pad, vh - taskbarH - rect.height - pad);
+    var curLeft = parseInt(winEl.style.left, 10) || 0;
+    var curTop = parseInt(winEl.style.top, 10) || 0;
+    if (curLeft > maxLeft) winEl.style.left = maxLeft + 'px';
+    if (curTop > maxTop) winEl.style.top = maxTop + 'px';
+    // Also clamp to a non-negative origin in case left/top went < pad.
+    if ((parseInt(winEl.style.left, 10) || 0) < pad) winEl.style.left = pad + 'px';
+    if ((parseInt(winEl.style.top, 10) || 0) < pad) winEl.style.top = pad + 'px';
+  }
+
+  // U5: Occlusion recovery for taskbar-chip taps. After raising z-order
+  // (bringToFront) or restoring from minimize (restoreWindow), check
+  // whether the window's title bar has enough screen room to be tapped:
+  // ≥12px tall above the taskbar AND ≥44px wide. If not, fall back to
+  // clampWindowToViewport so the window snaps back into reach. Touch
+  // only — desktop drag already clamps to mouse coordinates within the
+  // viewport via onDragMove.
+  function recoverWindowIfOffScreen(winEl) {
+    if (!winEl || !isMobile()) return;
+    var rect = winEl.getBoundingClientRect();
+    var taskbarEl = document.getElementById('taskbar');
+    var taskbarH = taskbarEl ? taskbarEl.getBoundingClientRect().height : TASKBAR_HEIGHT;
+    var visibleH = Math.min(rect.bottom, window.innerHeight - taskbarH) - Math.max(rect.top, 0);
+    var visibleW = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
+    if (visibleH >= 12 && visibleW >= 44) return;
+    clampWindowToViewport(winEl);
+  }
+
+  // U6: viewport change (resize + orientationchange) handling.
+  //
+  // Always: re-clamp every open window so it can't be stranded off-screen
+  // after a portrait↔landscape flip on phones or a desktop browser resize.
+  //
+  // Only on a zoom-factor crossing (body { zoom } flips 1.5 ↔ 1.0 as the
+  // viewport crosses 768px — rare desktop-browser-resize case; phones stay at
+  // zoom 1 throughout): also clamp each window's in-memory prevRect (the
+  // maximize/restore snapshot) into the new viewport's coordinate space and
+  // clear the persisted icon-positions so icons reflow under the CSS-driven
+  // mobile layout. Without that prevRect clamp, restoring a maximized window
+  // after the crossing could place it off-screen.
+  function onViewportChange() {
+    var currentZoom = getZoom();
+
+    // Always: clamp open windows to the new viewport. Maximized windows are
+    // pinned by CSS so the clamp is effectively a no-op for them; restrict
+    // the work to 'open' state windows to avoid disturbing maximized layout.
+    windows.forEach(function(win) {
+      if (!win || !win.el) return;
+      if (win.state !== 'open') return;
+      clampWindowToViewport(win.el);
+    });
+
+    // Only on zoom-change crossings: rewrite persisted state for the new
+    // coordinate space.
+    if (lastZoom !== null && currentZoom !== lastZoom) {
+      var vw = window.innerWidth;
+      var vh = window.innerHeight;
+      windows.forEach(function(win) {
+        if (!win || !win.prevRect) return;
+        win.prevRect.x = Math.max(0, Math.min(win.prevRect.x, vw - DRAG_EDGE_MARGIN_X));
+        win.prevRect.y = Math.max(0, Math.min(win.prevRect.y, vh - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
+        win.prevRect.w = Math.min(win.prevRect.w, vw);
+        win.prevRect.h = Math.min(win.prevRect.h, vh - TASKBAR_HEIGHT);
+      });
+      try { localStorage.removeItem('icon-positions'); } catch (e) {}
+    }
+
+    lastZoom = currentZoom;
+  }
+
+  // Idempotent binder. iOS Safari fires both resize and orientationchange on
+  // rotation, often back-to-back; we debounce through rAF so onViewportChange
+  // runs at most once per frame.
+  function bindViewportChangeHandler() {
+    if (resizeHandlerBound) return;
+    var rafId = null;
+    function debounced() {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(function() {
+        rafId = null;
+        onViewportChange();
+      });
+    }
+    window.addEventListener('resize', debounced);
+    window.addEventListener('orientationchange', debounced);
+    resizeHandlerBound = true;
+  }
+
   function getIconColumns() {
     var gridHeight = elIconGrid.clientHeight;
     return Math.max(1, Math.floor(gridHeight / 80));
@@ -1678,21 +1833,6 @@
         if (dismissed > 0 && hoursSince < 48) {
           icon.style.display = 'none';
         }
-      }
-
-      // DOS terminal file entry
-      var dosFileList = document.getElementById('dos-file-list');
-      if (dosFileList) {
-        var dosName = project.title.toUpperCase().replace(/\s+/g, '').substring(0, 8);
-        var dosExt = project.type === 'link' ? 'URL' : 'EXE';
-        var size = String(Math.floor(Math.random() * 9000 + 1024)).padStart(9, ' ');
-        var entry = document.createElement('a');
-        entry.className = 'dos-file-entry';
-        entry.href = project.url || '#';
-        entry.target = '_blank';
-        entry.rel = 'noopener';
-        entry.textContent = dosName.padEnd(12, ' ') + dosExt + size + '  ' + project.updated;
-        dosFileList.appendChild(entry);
       }
     });
 
@@ -2031,6 +2171,37 @@
         var target = li;
         submenuTimeout = setTimeout(function() { closeSubmenu(target); }, 200);
       });
+
+      // U3: tap-to-toggle on touch (mouse path unchanged). The parent
+      // <button class="start-menu-item"> carries aria-haspopup, so we
+      // intercept its click and stop propagation to keep the start-menu
+      // delegator (which closes the menu on any click) from firing.
+      // openSubmenu/closeSubmenu already toggle aria-expanded.
+      var trigger = li.querySelector(':scope > [aria-haspopup]');
+      if (trigger) {
+        trigger.addEventListener('click', function(e) {
+          if (!isMobile()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (li.classList.contains('submenu-open')) {
+            closeSubmenu(li);
+          } else {
+            openSubmenu(li);
+          }
+        });
+      }
+    });
+
+    // U3: outside-tap closes any open submenus on touch. Scoped to
+    // taps that land outside #start-menu entirely — taps INSIDE the
+    // menu that don't hit a .has-submenu trigger (e.g., a leaf item)
+    // are handled by the existing start-menu delegator which calls
+    // closeAllSubmenus before closing the start menu.
+    document.addEventListener('click', function(e) {
+      if (!isMobile()) return;
+      if (!e.target.closest('#start-menu') && !e.target.closest('#start-button')) {
+        closeAllSubmenus();
+      }
     });
   }
 
@@ -2112,8 +2283,18 @@
   }
 
   function launchPaint() {
-    createAppWindow('window-paint', 'untitled - Paint',
-      '<iframe src="https://jspaint.app" style="width:100%;height:100%;border:none;flex:1;"></iframe>',
+    // jspaint.app expects 800+ px and is unusable on phones. On phone-sized
+    // touch devices, skip iframe creation entirely (avoids focus traps and
+    // memory artifacts) and render a Win98-styled "best on desktop" note.
+    // Tablets keep the iframe — they have the room jspaint needs.
+    var isPhoneTouch = window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches;
+    var paintBody = isPhoneTouch
+      ? '<div class="paint-mobile-note">' +
+          '<img src="img/icons/paint-sm.png" alt="" class="paint-mobile-note-icon">' +
+          '<p>Paint runs best on a desktop with a mouse — open this site on a larger screen for the full experience.</p>' +
+        '</div>'
+      : '<iframe src="https://jspaint.app" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
+    createAppWindow('window-paint', 'untitled - Paint', paintBody,
       { width: '640px', height: '480px', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;' });
   }
 
@@ -2516,6 +2697,12 @@
     initSubmenus();
     layoutIcons();
     setupIconDrag();
+
+    // U6: seed lastZoom and bind the resize/orientationchange handler so open
+    // windows survive viewport changes and desktop-browser-width crossings of
+    // the 768px zoom boundary.
+    lastZoom = getZoom();
+    bindViewportChangeHandler();
 
     // Apply hash on load
     applyHashState();

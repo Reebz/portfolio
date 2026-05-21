@@ -194,3 +194,58 @@
   font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
   font-size: 11px;
 }
+
+/* === Mobile: collapse 6-column track table to vertical card stack ===
+   Below 768px wide on touch, the Song/Artist/Size/Bitrate/User/Connection
+   table is unreadable. Use display:block to break out of table layout and
+   stack each row as a card with the song name prominent, artist below,
+   and the rest of the columns as a small inline metadata row.
+
+   Rows are PRESENTATION-ONLY on mobile (per plan U8 deferred-question
+   resolution): no selection state, no fake-download affordance on small
+   screens — the desktop hover/selected styles are suppressed below. */
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  .napster-results,
+  .napster-results tbody,
+  .napster-results tr,
+  .napster-results td {
+    display: block;
+    width: 100%;
+  }
+  .napster-results thead { display: none; }
+  .napster-results tr {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--win98-grey);
+    background: var(--win98-white);
+  }
+  .napster-results td {
+    padding: 0;
+    white-space: normal;
+  }
+  /* Song name prominent. */
+  .napster-results td:nth-child(1) {
+    font-weight: bold;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+  /* Artist below song. */
+  .napster-results td:nth-child(2) {
+    font-size: 12px;
+    color: #555;
+    margin-bottom: 4px;
+  }
+  /* Size / Bitrate / User / Connection: inline metadata row. */
+  .napster-results td:nth-child(n+3) {
+    display: inline-block;
+    font-size: 11px;
+    color: #777;
+    margin-right: 8px;
+  }
+  /* Suppress hover/selected styling on mobile — rows are presentation-only. */
+  .napster-row:hover,
+  .napster-row[data-selected="true"] {
+    background: var(--win98-white);
+    color: var(--win98-black);
+  }
+}
