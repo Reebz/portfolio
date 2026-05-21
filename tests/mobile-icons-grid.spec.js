@@ -66,12 +66,10 @@ test.describe('Mobile icon grid', () => {
   });
 
   test('AE1: tapping an icon still launches the window', async ({ page }) => {
-    // dispatchEvent('click') over .tap() — same rationale as mobile-cold-load:
-    // touch-action: none on ancestors makes Playwright's tap-then-click
-    // synthesis unreliable. Real iOS Safari fires click on tap normally.
+    // Real tap per the tap-discipline meta-test (mobile-tap-discipline.spec.js).
     const aboutIcon = page.locator('[data-window-id="window-about"]').first();
     await expect(aboutIcon).toBeVisible();
-    await aboutIcon.dispatchEvent('click');
+    await aboutIcon.tap();
     await page.waitForTimeout(300);
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
   });
