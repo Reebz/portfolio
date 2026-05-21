@@ -23,7 +23,7 @@
 // drill, back affordance, leaf-launches-window, outside-tap-with-submenu-open).
 //
 // Real-tap discipline per R1: every interaction uses page.tap()/locator.tap()
-// — no dispatchEvent('click') escape hatches.
+// — no synthetic-click escape hatches.
 
 const { test, expect } = require('@playwright/test');
 

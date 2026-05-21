@@ -76,7 +76,7 @@ test.describe('Mobile screenshot baselines (U6)', () => {
     // the only top-level .has-submenu item; on phones the submenu slides
     // in over the root menu (B6 redesign), so a screenshot of this state
     // also captures the slide-in transform.
-    await page.locator('#start-button').dispatchEvent('click');
+    await page.locator('#start-button').tap();
     await page.waitForTimeout(200);
     await expect(page.locator('#start-menu')).toBeVisible();
 
@@ -84,7 +84,7 @@ test.describe('Mobile screenshot baselines (U6)', () => {
       .locator('#start-menu > .start-menu-items > .has-submenu')
       .first();
     const programsBtn = programsLi.locator(':scope > [aria-haspopup]');
-    await programsBtn.dispatchEvent('click');
+    await programsBtn.tap();
     // 350ms covers the slide-in transition (typical 250-300ms) plus a
     // settle frame so the screenshot doesn't catch a mid-transform.
     await page.waitForTimeout(350);
