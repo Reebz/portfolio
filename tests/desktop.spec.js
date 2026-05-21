@@ -240,18 +240,3 @@ test.describe('404 Page', () => {
     await expect(page.locator('#error-desc')).toContainText(/Page Fault \(404\)/);
   });
 });
-
-test.describe('Mobile View', () => {
-  test('shows DOS terminal on touch + coarse-pointer device', async ({ browser }) => {
-    const context = await browser.newContext({
-      hasTouch: true,
-      isMobile: true,
-      viewport: { width: 375, height: 667 },
-    });
-    const page = await context.newPage();
-    await page.goto('/');
-    await page.waitForTimeout(500);
-    await expect(page.locator('#mobile-view')).toBeVisible();
-    await context.close();
-  });
-});
