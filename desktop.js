@@ -2130,6 +2130,36 @@
   // --- Cascading Submenus ---
   var submenuTimeout = null;
 
+  // B6: on mobile (slide-in submenu approach), each opened .start-submenu
+  // gets a "← Back" affordance injected at the top. Idempotent — only
+  // injects once per submenu. The Back tap closes the parent .has-submenu
+  // (slides the submenu back off-stage).
+  function ensureSubmenuBackBar(li) {
+    if (!isMobile()) return;
+    var submenu = li.querySelector(':scope > .start-submenu');
+    if (!submenu) return;
+    if (submenu.querySelector(':scope > .start-submenu-back')) return;
+    var triggerBtn = li.querySelector(':scope > [aria-haspopup]');
+    var label = '';
+    if (triggerBtn) {
+      var labelEl = triggerBtn.querySelector('.start-item-label');
+      label = labelEl ? labelEl.textContent : triggerBtn.textContent.trim();
+    }
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'start-submenu-back';
+    back.setAttribute('aria-label', 'Back to previous menu');
+    back.innerHTML =
+      '<span class="start-submenu-back-arrow" aria-hidden="true">&#8592;</span>' +
+      '<span>' + (label || 'Back') + '</span>';
+    back.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSubmenu(li);
+    });
+    submenu.insertBefore(back, submenu.firstChild);
+  }
+
   function openSubmenu(li) {
     var parent = li.parentElement;
     if (parent) {
@@ -2140,6 +2170,9 @@
     li.classList.add('submenu-open');
     var trigger = li.querySelector(':scope > [aria-haspopup]');
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    // B6: inject back-bar on mobile so the user can return from a
+    // covered parent menu.
+    ensureSubmenuBackBar(li);
   }
 
   function closeSubmenu(li) {

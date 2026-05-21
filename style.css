@@ -592,7 +592,7 @@ body {
 /* --- Phone portrait (<480px wide, touch) --- */
 @media (hover: none) and (pointer: coarse) and (max-width: 479px) {
   :root {
-    --icon-grid-cols: 1;
+    --icon-grid-cols: 3;
     --taskbar-min-height: 44px;
     --window-max-w: 100vw;
     --window-max-h: calc(100vh - var(--taskbar-min-height));
@@ -610,35 +610,47 @@ body {
   #desktop > .window { touch-action: auto; }
   /* .desktop-icon under #desktop > #icon-grid keeps touch-action: none from above. */
 
-  /* U3: icons — single column, CSS Grid governs (layoutIcons() bails on
-     touch). touch-action: manipulation allows page pinch-zoom while
-     suppressing the 300ms double-tap-zoom delay on the icon itself.
-     Hit-area ≥44×44 via padding extension; visual icon size unchanged. */
+  /* B4: icon grid — true grid layout, viewport-bounded, no scroll.
+     Icons stack vertically (icon top, label bottom) matching the desktop
+     pattern, but scaled down to fit a phone viewport without scrolling.
+     Replaces U3's single-column row-mode list. At 14 icons / 3 cols = 5
+     rows × ~72px ≈ 360px — well inside a 664px-tall iPhone-14 viewport
+     minus the 48px taskbar. layoutIcons() JS still bails on touch so
+     CSS Grid is the sole authority for icon placement. */
   #icon-grid {
     display: grid;
     grid-template-columns: repeat(var(--icon-grid-cols), 1fr);
+    grid-auto-rows: minmax(72px, auto);
     align-content: start;
     gap: 4px;
-    bottom: var(--taskbar-min-height);
-    overflow-y: auto;
-    overflow-x: hidden;
     padding: 6px;
+    /* Constrain to viewport-minus-taskbar; no overflow. */
+    height: calc(100% - var(--taskbar-min-height) - 4px);
+    overflow: hidden;
   }
   .desktop-icon {
     position: static;
     width: auto;
-    min-width: 44px;
-    min-height: 44px;
-    flex-direction: row;
+    min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
+    min-height: 64px;
+    flex-direction: column;     /* revert U3's flex-direction:row */
     justify-content: flex-start;
-    gap: 10px;
-    padding: 8px 10px;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 2px;
     touch-action: manipulation;
   }
+  .desktop-icon img {
+    /* Scaled down for mobile grid density */
+    width: 28px;
+    height: 28px;
+  }
   .desktop-icon-label {
-    text-align: left;
-    max-width: none;
+    text-align: center;
     -webkit-line-clamp: 2;
+    font-size: 11px;
+    line-height: 1.2;
+    max-width: 100%;
   }
 
   /* U3: taskbar — ≥44px hit targets per WCAG 2.5.5. Chip container
@@ -676,14 +688,8 @@ body {
     padding: 4px 8px;
     font-size: 12px;
   }
-  #quick-launch {
-    flex-shrink: 0;
-  }
-  .quick-launch-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px;
-  }
+  /* B7: hide quick-launch — reclaims horizontal taskbar room for window chips */
+  #quick-launch { display: none; }
   #system-tray {
     min-height: 44px;
     height: auto;
@@ -701,22 +707,34 @@ body {
     padding: 4px 0;
   }
 
-  /* U3: start menu — anchors upward from the taskbar, fits viewport,
-     scrolls if content exceeds. Submenu hover converts to tap via JS
-     (initSubmenus extension + .submenu-open class). */
+  /* B6: start menu redesign — Slide-in submenu. ui-ux-pro-max recommended
+     this approach over Compact (still tall narrow column) and Fullscreen
+     overlay (abandons Win98 chrome). Preserves the floating Win98 panel +
+     sidebar stripe at ~70vw width; each submenu slides in from the right
+     covering the parent menu so every level gets the full panel width
+     instead of inline-stacking. A JS-injected "← Back" affordance at the
+     top of each open submenu reverses the slide.
+
+     The slide is achieved with position: absolute / inset: 0 on submenus
+     under #start-menu (which is position: relative) plus transform on the
+     .has-submenu.submenu-open > .start-submenu pair. Overflow on the
+     menu is hidden to clip the off-stage submenus. */
   #start-menu {
     bottom: var(--taskbar-min-height);
     top: auto;
     left: 0;
-    width: auto;
-    max-width: 95vw;
+    width: 70vw;
+    max-width: 320px;
     min-width: 240px;
-    max-height: 80vh;
-    overflow-y: auto;
-    overflow-x: hidden;
+    max-height: 75vh;
+    overflow: hidden; /* clip off-stage submenus */
+    position: fixed;
   }
   .start-menu-items {
     margin-left: 24px;
+    overflow-y: auto;
+    max-height: calc(75vh - 4px);
+    -webkit-overflow-scrolling: touch;
   }
   .start-menu-item {
     min-height: 44px;
@@ -730,19 +748,84 @@ body {
     height: auto !important;
     padding: 8px 12px !important;
   }
-  /* Submenus on touch: stack inline beneath the parent rather than
-     floating right (which would overflow a 390px viewport). The
-     .submenu-open class is toggled by initSubmenus' tap handler. */
-  .start-submenu {
+  /* Override base .has-submenu { position: relative } so submenus are
+     positioned relative to #start-menu (fixed → containing block) rather
+     than each li row — otherwise the slide would only cover one row. */
+  .has-submenu {
     position: static;
-    left: auto;
-    top: auto;
-    width: 100%;
+  }
+  /* Submenus on mobile: slide in from the right covering the parent menu.
+     Position absolute inside #start-menu (the containing block). They
+     occupy the menu area minus the sidebar stripe (left: 24px) so the
+     Win98 chrome shows on each level. Off-stage by default
+     (translateX(110%)); .has-submenu.submenu-open > .start-submenu slides
+     to translateX(0). The base .start-submenu { display: none } rule is
+     overridden to display: flex column so the back-bar + items stack. */
+  .start-submenu {
+    display: flex !important;
+    flex-direction: column;
+    position: absolute;
+    left: 24px; /* preserve sidebar stripe visibility */
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: auto;
     min-width: 0;
-    margin-left: 16px;
+    margin: 0;
+    padding: 2px 0;
+    transform: translateX(110%);
+    transition: transform 0.18s ease-out;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Visual stays as the base Win98 panel — no shadow here because the
+       slide covers the parent and the menu's outer chrome already
+       provides the bevel. */
     box-shadow: none;
     border: none;
-    padding-left: 8px;
+    z-index: 1;
+    /* Off-stage submenus are not tappable; their pointer-events come back
+       on when slid into view (.submenu-open rule below). */
+    pointer-events: none;
+    background: var(--win98-silver);
+  }
+  .has-submenu.submenu-open > .start-submenu {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  /* Nested submenus stack on top so two slides cover progressively. */
+  .start-submenu .start-submenu {
+    left: 0; /* nested submenus cover the parent submenu fully */
+    z-index: 2;
+  }
+  /* Back affordance (injected via JS on first open). Tappable bar at the
+     top of each open submenu — pressing it removes .submenu-open from
+     the parent .has-submenu, sliding the submenu back off-stage. */
+  .start-submenu-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+    background: var(--win98-silver);
+    border: none;
+    border-bottom: 1px solid var(--win98-grey);
+    color: var(--win98-black);
+    cursor: default;
+    width: 100%;
+    text-align: left;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+  .start-submenu-back:active {
+    background: var(--win98-navy);
+    color: var(--win98-white);
+  }
+  .start-submenu-back-arrow {
+    font-size: 14px;
+    line-height: 1;
   }
 
   /* U4: windows — clamp outer size to var(--window-max-w/h) so windows
@@ -776,40 +859,49 @@ body {
     font-family: Tahoma, sans-serif !important;
   }
 
-  /* U5: title bar controls — extend the interactive surface to 44×44
-     per WCAG 2.5.5. Approach: padding extension with background-clip /
-     background-origin: content-box so the vendor 98.css SVG icon
-     (Minimize bar, Maximize square, Close X) renders only in the 16×14
-     content box at the button's center while the click target is the
-     full 44×44. min-width/min-height override the vendor 16/14 floor
-     because padding adds OUTSIDE width with box-sizing: content-box,
-     which would otherwise produce 16+padding boxes.
-
-     Trade-off vs the preferred ::before overlay: each button physically
-     occupies 44×44, so the title bar grows to ~48px on mobile (vendor
-     ~22px on desktop). Chosen here because 44×44 overlays on three
-     adjacent 16×14 buttons (0-2px gaps) all overlap, and the topmost
-     DOM-order overlay (Close) traps clicks intended for siblings. The
-     padding approach gives every button a clean, non-overlapping 44×44
-     surface that aligns with WCAG and survives Playwright's hit-test.
-     Mouse path unchanged — desktop browsers don't match (hover:none) +
-     (coarse). */
+  /* B2: title-bar height bump — replaces U5 padding+content-box.
+     Bumps title-bar height to 44px on mobile so button visuals can fill
+     the WCAG 2.5.5 hit area cleanly (no transparent padding ring revealing
+     the title-bar blue). Button visuals scale to 30x30. touch-action:
+     manipulation restores iOS tap-to-click synthesis suppressed by the
+     inherited .title-bar { touch-action: none } from U2. */
+  .title-bar {
+    height: 44px;
+    padding: 4px 6px;
+    align-items: center;
+    box-sizing: border-box;
+  }
+  .title-bar-text {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .title-bar-controls {
+    gap: 4px;
+    align-items: center;
+  }
   .title-bar-controls button {
-    box-sizing: content-box;
-    min-width: 0;
-    min-height: 0;
-    width: 16px;
-    height: 14px;
-    padding: 15px 14px;
-    background-clip: content-box;
-    background-origin: content-box;
+    /* Reset U5 box-sizing/padding/clip approach */
+    box-sizing: border-box;
+    min-width: 30px;
+    min-height: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background-clip: border-box;
+    background-origin: border-box;
+    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
+    background-size: 16px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+    /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
+    touch-action: manipulation;
   }
 }
 
 /* --- Phone landscape (480-767px wide, touch) --- */
 @media (hover: none) and (pointer: coarse) and (min-width: 480px) and (max-width: 767px) {
   :root {
-    --icon-grid-cols: 2;
+    --icon-grid-cols: 5;
     --taskbar-min-height: 44px;
     --window-max-w: 100vw;
     --window-max-h: calc(100vh - var(--taskbar-min-height));
@@ -820,32 +912,44 @@ body {
   #desktop { touch-action: none; }
   #desktop > .window { touch-action: auto; }
 
-  /* U3: icons — two-column grid; CSS Grid governs on touch. */
+  /* B4: icon grid — true grid layout, viewport-bounded, no scroll.
+     5 cols at landscape (~664-844px wide) → ~3 rows for 14 icons,
+     well inside the ~350-400px landscape height after taskbar. Same
+     vertical-stack icon visual as phone-portrait. */
   #icon-grid {
     display: grid;
     grid-template-columns: repeat(var(--icon-grid-cols), 1fr);
+    grid-auto-rows: minmax(72px, auto);
     align-content: start;
     gap: 6px;
-    bottom: var(--taskbar-min-height);
-    overflow-y: auto;
-    overflow-x: hidden;
     padding: 8px;
+    /* Constrain to viewport-minus-taskbar; no overflow. */
+    height: calc(100% - var(--taskbar-min-height) - 4px);
+    overflow: hidden;
   }
   .desktop-icon {
     position: static;
     width: auto;
-    min-width: 44px;
-    min-height: 44px;
-    flex-direction: row;
+    min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
+    min-height: 64px;
+    flex-direction: column;     /* revert U3's flex-direction:row */
     justify-content: flex-start;
-    gap: 10px;
-    padding: 8px 10px;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 2px;
     touch-action: manipulation;
   }
+  .desktop-icon img {
+    /* Scaled down for mobile grid density */
+    width: 28px;
+    height: 28px;
+  }
   .desktop-icon-label {
-    text-align: left;
-    max-width: none;
+    text-align: center;
     -webkit-line-clamp: 2;
+    font-size: 11px;
+    line-height: 1.2;
+    max-width: 100%;
   }
 
   /* U3: taskbar — same 44px floor as portrait. */
@@ -879,14 +983,8 @@ body {
     padding: 4px 8px;
     font-size: 12px;
   }
-  #quick-launch {
-    flex-shrink: 0;
-  }
-  .quick-launch-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px;
-  }
+  /* B7: hide quick-launch — reclaims horizontal taskbar room for window chips */
+  #quick-launch { display: none; }
   #system-tray {
     min-height: 44px;
     height: auto;
@@ -902,17 +1000,25 @@ body {
     padding: 4px 0;
   }
 
-  /* U3: start menu — opens upward, sized to viewport. */
+  /* B6: start menu redesign — Slide-in submenu. Landscape gets a wider
+     panel (still capped) so the slide-in submenu's full width feels
+     spacious. Same back-affordance pattern as portrait. */
   #start-menu {
     bottom: var(--taskbar-min-height);
     top: auto;
     left: 0;
-    width: auto;
-    max-width: 95vw;
+    width: 50vw;
+    max-width: 360px;
     min-width: 260px;
     max-height: 80vh;
+    overflow: hidden; /* clip off-stage submenus */
+    position: fixed;
+  }
+  .start-menu-items {
+    margin-left: 24px;
     overflow-y: auto;
-    overflow-x: hidden;
+    max-height: calc(80vh - 4px);
+    -webkit-overflow-scrolling: touch;
   }
   .start-menu-item {
     min-height: 44px;
@@ -926,17 +1032,67 @@ body {
     height: auto !important;
     padding: 8px 12px !important;
   }
-  /* Submenus on touch: stack inline beneath the parent. */
-  .start-submenu {
+  /* Override base .has-submenu { position: relative } — see portrait block. */
+  .has-submenu {
     position: static;
-    left: auto;
-    top: auto;
-    width: 100%;
+  }
+  /* Submenus slide in from the right covering the parent. */
+  .start-submenu {
+    display: flex !important;
+    flex-direction: column;
+    position: absolute;
+    left: 24px;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: auto;
     min-width: 0;
-    margin-left: 16px;
+    margin: 0;
+    padding: 2px 0;
+    transform: translateX(110%);
+    transition: transform 0.18s ease-out;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     box-shadow: none;
     border: none;
-    padding-left: 8px;
+    z-index: 1;
+    pointer-events: none;
+    background: var(--win98-silver);
+  }
+  .has-submenu.submenu-open > .start-submenu {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  .start-submenu .start-submenu {
+    left: 0;
+    z-index: 2;
+  }
+  .start-submenu-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+    background: var(--win98-silver);
+    border: none;
+    border-bottom: 1px solid var(--win98-grey);
+    color: var(--win98-black);
+    cursor: default;
+    width: 100%;
+    text-align: left;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+  .start-submenu-back:active {
+    background: var(--win98-navy);
+    color: var(--win98-white);
+  }
+  .start-submenu-back-arrow {
+    font-size: 14px;
+    line-height: 1;
   }
 
   /* U4: windows — same outer-clamp story as portrait; data-no-resize
@@ -962,18 +1118,43 @@ body {
     font-family: Tahoma, sans-serif !important;
   }
 
-  /* U5: title bar controls — 44×44 hit area via padding extension; SVG
-     icon stays in the 16×14 content box via background-clip:content-box.
+  /* B2: title-bar height bump — replaces U5 padding+content-box.
+     Bumps title-bar height to 44px on mobile so button visuals can fill
+     the WCAG 2.5.5 hit area cleanly (no transparent padding ring revealing
+     the title-bar blue). Button visuals scale to 30x30. touch-action:
+     manipulation restores iOS tap-to-click synthesis suppressed by the
+     inherited .title-bar { touch-action: none } from U2.
      See phone-portrait block above for full rationale. */
+  .title-bar {
+    height: 44px;
+    padding: 4px 6px;
+    align-items: center;
+    box-sizing: border-box;
+  }
+  .title-bar-text {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .title-bar-controls {
+    gap: 4px;
+    align-items: center;
+  }
   .title-bar-controls button {
-    box-sizing: content-box;
-    min-width: 0;
-    min-height: 0;
-    width: 16px;
-    height: 14px;
-    padding: 15px 14px;
-    background-clip: content-box;
-    background-origin: content-box;
+    /* Reset U5 box-sizing/padding/clip approach */
+    box-sizing: border-box;
+    min-width: 30px;
+    min-height: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background-clip: border-box;
+    background-origin: border-box;
+    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
+    background-size: 16px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+    /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
+    touch-action: manipulation;
   }
 }
 
@@ -991,15 +1172,43 @@ body {
   #desktop { touch-action: none; }
   #desktop > .window { touch-action: auto; }
 
-  /* U3: icons — preserve existing absolute-positioned grid on tablet.
-     layoutIcons() still bails on touch (no JS placement) but the
-     default icon size + cell-width work at this width. Extend hit
-     area to 44×44 and enable manipulation. */
+  /* B4: icon grid — true grid layout on tablet too. layoutIcons() bails
+     on touch (no JS placement), so CSS Grid is the sole authority. 8 cols
+     at 768-834px ≈ ~95-100px per column. 14 icons fits in 2 rows easily.
+     Tablet keeps the larger 32×32 icon visual (extra room vs phone). */
+  #icon-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--icon-grid-cols), 1fr);
+    grid-auto-rows: minmax(80px, auto);
+    align-content: start;
+    gap: 6px;
+    padding: 8px;
+    /* Constrain to viewport-minus-taskbar; no overflow. */
+    height: calc(100% - var(--taskbar-min-height) - 4px);
+    overflow: hidden;
+  }
   .desktop-icon {
-    min-width: 44px;
-    min-height: 44px;
+    position: static;
+    width: auto;
+    min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
+    min-height: 64px;
+    flex-direction: column;     /* matches desktop pattern */
+    justify-content: flex-start;
+    align-items: center;
+    gap: 4px;
     padding: 6px;
     touch-action: manipulation;
+  }
+  .desktop-icon img {
+    /* Tablet has room for the slightly larger 32×32 icon */
+    width: 32px;
+    height: 32px;
+  }
+  .desktop-icon-label {
+    text-align: center;
+    -webkit-line-clamp: 2;
+    line-height: 1.2;
+    max-width: 100%;
   }
 
   /* U3: taskbar — 44px hit floor (visual chrome preserved). */
@@ -1027,11 +1236,8 @@ body {
     flex-basis: 140px;
     padding: 4px 8px;
   }
-  .quick-launch-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px;
-  }
+  /* B7: hide quick-launch — reclaims horizontal taskbar room for window chips */
+  #quick-launch { display: none; }
   #system-tray {
     min-height: 44px;
     height: auto;
@@ -1043,8 +1249,10 @@ body {
     min-height: 44px;
   }
 
-  /* U3: start menu — opens upward, 80vh cap. Native 180px width
-     fits well on tablet, so don't force max-w like phone. */
+  /* B6: start menu redesign — tablet keeps the native Win98 cascade
+     because there's horizontal room for floating right-side submenus.
+     Phone breakpoints (above) use a slide-in pattern; tablet does not
+     need it. Only ergonomic tweaks (≥44px hit targets) here. */
   #start-menu {
     bottom: var(--taskbar-min-height);
     top: auto;
@@ -1062,8 +1270,8 @@ body {
     min-height: 48px !important;
     height: auto !important;
   }
-  /* On tablet there's room to keep submenus floating to the right —
-     leave the .start-submenu { left: 100% } default in place. */
+  /* On tablet the Win98 cascade (.start-submenu { left: 100% }) stays
+     in place — no override needed. */
 
   /* U4: windows — tablet uses a 96vw cap so the desktop-grade chrome
      stays intact. data-no-resize dialogs still keep native widths. */
@@ -1088,19 +1296,44 @@ body {
     font-family: Tahoma, sans-serif !important;
   }
 
-  /* U5: title bar controls — 44×44 hit area via padding extension; SVG
-     icon stays in the 16×14 content box via background-clip:content-box.
+  /* B2: title-bar height bump — replaces U5 padding+content-box.
+     Bumps title-bar height to 44px on mobile so button visuals can fill
+     the WCAG 2.5.5 hit area cleanly (no transparent padding ring revealing
+     the title-bar blue). Button visuals scale to 30x30. touch-action:
+     manipulation restores iOS tap-to-click synthesis suppressed by the
+     inherited .title-bar { touch-action: none } from U2.
      See phone-portrait block for full rationale. Tablet shares the same
      control geometry. */
+  .title-bar {
+    height: 44px;
+    padding: 4px 6px;
+    align-items: center;
+    box-sizing: border-box;
+  }
+  .title-bar-text {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .title-bar-controls {
+    gap: 4px;
+    align-items: center;
+  }
   .title-bar-controls button {
-    box-sizing: content-box;
-    min-width: 0;
-    min-height: 0;
-    width: 16px;
-    height: 14px;
-    padding: 15px 14px;
-    background-clip: content-box;
-    background-origin: content-box;
+    /* Reset U5 box-sizing/padding/clip approach */
+    box-sizing: border-box;
+    min-width: 30px;
+    min-height: 30px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background-clip: border-box;
+    background-origin: border-box;
+    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
+    background-size: 16px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+    /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
+    touch-action: manipulation;
   }
 }
 
