@@ -26,6 +26,27 @@ What's this for? Fun and nostalgia. I wanted to bring back the feeling of the PC
 - [98.css](https://jdan.github.io/98.css/) for Windows 98 UI components
 - No frameworks, no build step, no npm
 
+## Testing
+
+Playwright drives the test suite across three projects: `desktop` (chromium), `iphone-14` (mobile Safari emulation), and `ipad-pro-11` (tablet regression).
+
+```bash
+npm test                                  # run everything
+npx playwright test --project=iphone-14   # phone specs only
+```
+
+### Updating screenshot baselines
+
+`tests/mobile-screenshots.spec.js` captures four canonical phone chrome states as PNG baselines under `tests/mobile-screenshots.spec.js-snapshots/`. They run only under the `iphone-14` project so we commit one set of PNGs, not three.
+
+When mobile chrome legitimately changes (new icon, taskbar redesign, Start menu tweak, etc.), regenerate the baselines and commit the new PNGs alongside the change:
+
+```bash
+npx playwright test mobile-screenshots --update-snapshots --project=iphone-14
+```
+
+Review the updated PNGs in `git diff` to confirm they reflect the intended change before committing.
+
 ## Acknowledgements
 
 This project uses and is inspired by the work of others. Credit where it's due, thank you.
