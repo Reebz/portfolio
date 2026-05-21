@@ -24,7 +24,7 @@ test.describe('Mobile Start menu (B6)', () => {
 
   test('B6: Start menu fits within viewport when opened', async ({ page }) => {
     const startBtn = page.locator('#start-button');
-    await startBtn.dispatchEvent('click');
+    await startBtn.tap();
     await page.waitForTimeout(200);
 
     const menu = page.locator('#start-menu');
@@ -44,13 +44,13 @@ test.describe('Mobile Start menu (B6)', () => {
 
   test('B6: Start menu opens on tap and closes on outside tap', async ({ page }) => {
     const startBtn = page.locator('#start-button');
-    await startBtn.dispatchEvent('click');
+    await startBtn.tap();
     await page.waitForTimeout(150);
     await expect(page.locator('#start-menu')).toBeVisible();
 
     // Tap on bare desktop background (top-left area where icons don't live;
     // away from #start-button and #start-menu).
-    await page.locator('#desktop').dispatchEvent('click');
+    await page.locator('#desktop').tap({ position: { x: 5, y: 5 } });
     await page.waitForTimeout(200);
 
     // The menu hides via .open class removal (computed display: none).
@@ -62,14 +62,14 @@ test.describe('Mobile Start menu (B6)', () => {
 
   test('B6: submenu opens on tap of a .has-submenu parent trigger', async ({ page }) => {
     const startBtn = page.locator('#start-button');
-    await startBtn.dispatchEvent('click');
+    await startBtn.tap();
     await page.waitForTimeout(150);
 
     // The "Programs" top-level item is the only .has-submenu child of the
     // .start-menu-items root <ul>. Tap its trigger to expand.
     const programsLi = page.locator('#start-menu > .start-menu-items > .has-submenu').first();
     const programsBtn = programsLi.locator(':scope > [aria-haspopup]');
-    await programsBtn.dispatchEvent('click');
+    await programsBtn.tap();
     await page.waitForTimeout(250);
 
     // The parent li should have .submenu-open and aria-expanded="true".
@@ -88,7 +88,7 @@ test.describe('Mobile Start menu (B6)', () => {
 
   test('B6: tapping a leaf menu item launches the window and closes the menu', async ({ page }) => {
     const startBtn = page.locator('#start-button');
-    await startBtn.dispatchEvent('click');
+    await startBtn.tap();
     await page.waitForTimeout(150);
 
     // Guestbook is a top-level leaf (no submenu navigation needed).
@@ -96,7 +96,7 @@ test.describe('Mobile Start menu (B6)', () => {
       '#start-menu .start-menu-item[data-window="window-guestbook"]'
     );
     await expect(guestbookLeaf).toBeVisible();
-    await guestbookLeaf.dispatchEvent('click');
+    await guestbookLeaf.tap();
     await page.waitForTimeout(250);
 
     // Menu hides (computed display: none after .open class removal).
