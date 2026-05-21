@@ -744,6 +744,37 @@ body {
     border: none;
     padding-left: 8px;
   }
+
+  /* U4: windows — clamp outer size to var(--window-max-w/h) so windows
+     can never extend past the viewport. min-width override removes the
+     desktop 300px floor; narrow dialogs with data-no-resize="true"
+     (Calculator 240, Run 320, ICQ 170, Minesweeper) keep their native
+     widths via the precedent rule at style.css:171. Vendor 98.css
+     .window-body { margin: 8px } loses 16px of horizontal room — drop
+     to 0 + 4px padding to recover responsive-math room. */
+  .window {
+    min-width: auto;
+    max-width: var(--window-max-w);
+    max-height: var(--window-max-h);
+    margin: var(--window-margin);
+  }
+  .window-body { margin: 0; padding: 4px; }
+
+  /* U4: text floors — 14px floor on body text via max(14px, 1em) keeps
+     larger text intact. Form controls get 16px Tahoma to suppress iOS
+     Safari's auto-zoom-on-focus (WebKit bug: bitmap fonts <16px still
+     fire zoom even when computed size reads ≥16; Tahoma sidesteps it). */
+  .window-body, .window-body * { font-size: max(14px, 1em); }
+  .window-body input,
+  .window-body textarea,
+  .window-body [contenteditable] {
+    /* !important needed to beat inline `style="font-size:11px"` on
+       legacy Win98-styled inputs (Contact form: index.html:133/137/141/145).
+       iOS Safari triggers auto-zoom-on-focus when computed font-size < 16
+       at the moment of focus; an inline style would otherwise win. */
+    font-size: 16px !important;
+    font-family: Tahoma, sans-serif !important;
+  }
 }
 
 /* --- Phone landscape (480-767px wide, touch) --- */
@@ -878,6 +909,29 @@ body {
     border: none;
     padding-left: 8px;
   }
+
+  /* U4: windows — same outer-clamp story as portrait; data-no-resize
+     dialogs keep their native widths via style.css:171. */
+  .window {
+    min-width: auto;
+    max-width: var(--window-max-w);
+    max-height: var(--window-max-h);
+    margin: var(--window-margin);
+  }
+  .window-body { margin: 0; padding: 4px; }
+
+  /* U4: text floors — 14px body / 16px Tahoma inputs (iOS auto-zoom). */
+  .window-body, .window-body * { font-size: max(14px, 1em); }
+  .window-body input,
+  .window-body textarea,
+  .window-body [contenteditable] {
+    /* !important needed to beat inline `style="font-size:11px"` on
+       legacy Win98-styled inputs (Contact form: index.html:133/137/141/145).
+       iOS Safari triggers auto-zoom-on-focus when computed font-size < 16
+       at the moment of focus; an inline style would otherwise win. */
+    font-size: 16px !important;
+    font-family: Tahoma, sans-serif !important;
+  }
 }
 
 /* --- Tablet (>=768px wide, touch) --- */
@@ -967,6 +1021,29 @@ body {
   }
   /* On tablet there's room to keep submenus floating to the right —
      leave the .start-submenu { left: 100% } default in place. */
+
+  /* U4: windows — tablet uses a 96vw cap so the desktop-grade chrome
+     stays intact. data-no-resize dialogs still keep native widths. */
+  .window {
+    min-width: auto;
+    max-width: var(--window-max-w);
+    max-height: var(--window-max-h);
+    margin: var(--window-margin);
+  }
+  .window-body { margin: 0; padding: 4px; }
+
+  /* U4: text floors — 14px body / 16px Tahoma inputs. */
+  .window-body, .window-body * { font-size: max(14px, 1em); }
+  .window-body input,
+  .window-body textarea,
+  .window-body [contenteditable] {
+    /* !important needed to beat inline `style="font-size:11px"` on
+       legacy Win98-styled inputs (Contact form: index.html:133/137/141/145).
+       iOS Safari triggers auto-zoom-on-focus when computed font-size < 16
+       at the moment of focus; an inline style would otherwise win. */
+    font-size: 16px !important;
+    font-family: Tahoma, sans-serif !important;
+  }
 }
 
 /* === Paint mobile fallback ===

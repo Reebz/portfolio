@@ -218,6 +218,17 @@
     bringToFront(id);
     win.el.focus();
 
+    // U4: Mobile viewport clamp. After CSS max-width caps the rendered
+    // width, push any window that would extend past the right/bottom
+    // edge back into view. Cascade math doesn't know the viewport, so
+    // wider system windows (Recycle Bin width:500 → max-width clamps to
+    // ~95vw, but offset 30-218 places them off-right at 390×844). Read
+    // computed rect after the open class flips so the measurement is
+    // accurate. Keeps MIN_WIN_SIZE on desktop unchanged.
+    if (isMobile()) {
+      clampWindowToViewport(win.el);
+    }
+
     // Create taskbar button
     createTaskbarButton(id, win);
 
@@ -1516,6 +1527,34 @@
 
   function isMobile() {
     return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  }
+
+  // U4: Clamp a window's left/top so its right/bottom edge stays inside the
+  // viewport. Called after openWindow sets the cascade position on mobile;
+  // CSS max-width has already clamped the rendered width via the .window
+  // rule inside the touch @media blocks (var(--window-max-w)). We read the
+  // post-clamp bounding rect, then nudge left/top so x + w fits within
+  // (viewport.w - 4) and y + h fits within (viewport.h - taskbar - 4).
+  function clampWindowToViewport(winEl) {
+    if (!winEl) return;
+    var rect = winEl.getBoundingClientRect();
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    // Read the computed taskbar floor (44px on touch) rather than the
+    // desktop 28 — the touch CSS overrides --taskbar-height implicitly via
+    // --taskbar-min-height, so the bottom inset must match what's on-screen.
+    var taskbarEl = document.getElementById('taskbar');
+    var taskbarH = taskbarEl ? taskbarEl.getBoundingClientRect().height : TASKBAR_HEIGHT;
+    var pad = 4;
+    var maxLeft = Math.max(pad, vw - rect.width - pad);
+    var maxTop = Math.max(pad, vh - taskbarH - rect.height - pad);
+    var curLeft = parseInt(winEl.style.left, 10) || 0;
+    var curTop = parseInt(winEl.style.top, 10) || 0;
+    if (curLeft > maxLeft) winEl.style.left = maxLeft + 'px';
+    if (curTop > maxTop) winEl.style.top = maxTop + 'px';
+    // Also clamp to a non-negative origin in case left/top went < pad.
+    if ((parseInt(winEl.style.left, 10) || 0) < pad) winEl.style.left = pad + 'px';
+    if ((parseInt(winEl.style.top, 10) || 0) < pad) winEl.style.top = pad + 'px';
   }
 
   function getIconColumns() {
