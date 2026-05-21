@@ -1679,21 +1679,6 @@
           icon.style.display = 'none';
         }
       }
-
-      // DOS terminal file entry
-      var dosFileList = document.getElementById('dos-file-list');
-      if (dosFileList) {
-        var dosName = project.title.toUpperCase().replace(/\s+/g, '').substring(0, 8);
-        var dosExt = project.type === 'link' ? 'URL' : 'EXE';
-        var size = String(Math.floor(Math.random() * 9000 + 1024)).padStart(9, ' ');
-        var entry = document.createElement('a');
-        entry.className = 'dos-file-entry';
-        entry.href = project.url || '#';
-        entry.target = '_blank';
-        entry.rel = 'noopener';
-        entry.textContent = dosName.padEnd(12, ' ') + dosExt + size + '  ' + project.updated;
-        dosFileList.appendChild(entry);
-      }
     });
 
   }

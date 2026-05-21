@@ -576,82 +576,14 @@ body {
 }
 
 /* === Mobile / Touch ===
-   Only trigger mobile view for actual touch devices (no hover + coarse pointer).
-   Desktop browsers keep the full experience at ANY window width. */
+   Entry point for responsive rules on touch devices (no hover + coarse pointer).
+   U2 fills this in; for now it just keeps page scrolling sane on small viewports. */
 @media (hover: none) and (pointer: coarse) {
   html, body {
     height: auto;
     overflow: auto;
     zoom: 1;
   }
-
-  #desktop {
-    display: none !important;
-  }
-
-  #start-menu,
-  #taskbar {
-    display: none !important;
-  }
-
-  #mobile-view {
-    display: block !important;
-  }
-}
-
-/* Desktop: always show desktop UI when hover+fine pointer (mouse) is available */
-@media (hover: hover) and (pointer: fine) {
-  #mobile-view {
-    display: none !important;
-  }
-}
-
-/* === Mobile View (DOS Terminal) === */
-#mobile-view {
-  display: none;
-}
-
-#dos-terminal {
-  background: #000000;
-  color: #AAAAAA;
-  font-family: "Perfect DOS VGA 437", "Lucida Console", "Courier New", monospace;
-  font-size: 14px;
-  line-height: 1.4;
-  padding: 16px;
-  min-height: 100vh;
-}
-
-.dos-line {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.dos-file-entry {
-  color: #FFFFFF;
-  display: block;
-  padding: 2px 0;
-  text-decoration: none;
-  white-space: pre;
-}
-
-.dos-file-entry:active {
-  background: #0000AA;
-  color: #FFFFFF;
-}
-
-.dos-blink {
-  animation: dos-cursor-blink 1s step-end infinite;
-}
-
-@keyframes dos-cursor-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.dos-easter-egg {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #333;
 }
 
 /* === Context Menus === */
