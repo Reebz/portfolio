@@ -14,9 +14,11 @@ module.exports = defineConfig({
         baseURL: 'http://localhost:8080',
         screenshot: 'only-on-failure',
       },
-      // Desktop project runs all existing specs; the mobile-*.spec.js files
-      // are explicitly excluded so iOS Safari behavior doesn't run under chromium.
-      testMatch: /tests\/(?!mobile-).+\.spec\.js$/,
+      // Desktop project runs all non-mobile specs PLUS `mobile-tap-discipline`
+      // — that meta-test reads the spec directory via fs and needs no browser
+      // viewport, so it runs here (under chromium, fastest project) rather
+      // than redundantly in every phone project.
+      testMatch: /tests\/(?:(?!mobile-).+|mobile-tap-discipline)\.spec\.js$/,
     },
     {
       name: 'iphone-se',
@@ -40,7 +42,9 @@ module.exports = defineConfig({
       // Mobile mode is now phones-only — touch + max-width 767px. Tablets
       // (768+) inherit desktop styling per the touch-detection contract
       // rewrite in style.css/desktop.js/boot.js.
-      testMatch: /tests\/mobile-.+\.spec\.js$/,
+      // `mobile-tap-discipline.spec.js` is a viewport-agnostic meta-test —
+      // routed to the desktop project to avoid running it under every phone.
+      testMatch: /tests\/mobile-(?!tap-discipline\.spec\.js$).+\.spec\.js$/,
     },
     {
       name: 'iphone-14-pro-max',

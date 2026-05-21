@@ -87,10 +87,11 @@ test.describe('Mobile multi-window', () => {
     await page.waitForTimeout(150);
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'minimized');
 
-    // Tap the taskbar chip — same dispatchEvent trick as cold-load.
+    // Real tap on the taskbar chip — verified against the U2 touch-action
+    // fixes from PR #9. See mobile-tap-discipline.spec.js for enforcement.
     const chip = page.locator('#taskbar [data-window-id="window-about"]');
     await expect(chip).toBeVisible();
-    await chip.dispatchEvent('click');
+    await chip.tap();
     await page.waitForTimeout(200);
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
 

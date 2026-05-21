@@ -5,10 +5,12 @@
 //
 // Runs under the iphone-14 and ipad-pro-11 projects in playwright.config.js.
 //
-// On touch projects, Playwright cannot reliably synthesize the follow-up
-// `click` event after a `tap()` when ancestors carry `touch-action: none`
-// (see U5 notes). We use `dispatchEvent('click')` for the icon-tap assertion
-// to keep the test stable; real iOS Safari fires click on tap normally.
+// Real-tap discipline: every tap interaction uses `page.tap()` / `locator.tap()`.
+// Earlier revisions used a synthetic click dispatch to dodge a touch-action
+// propagation issue; U1 of the mobile-test-coverage plan audited those calls
+// against the U2 height-bump / touch-action fixes from PR #9 and confirmed
+// real taps now fire the click handler. The `mobile-tap-discipline.spec.js`
+// meta-test enforces this going forward.
 
 const { test, expect } = require('@playwright/test');
 
@@ -46,8 +48,7 @@ test.describe('Mobile cold load', () => {
   test('AE1: tapping About Me icon opens the window', async ({ page }) => {
     const aboutIcon = page.locator('[data-window-id="window-about"]');
     await expect(aboutIcon).toBeVisible();
-    // dispatchEvent over .tap() — see file header for rationale.
-    await aboutIcon.dispatchEvent('click');
+    await aboutIcon.tap();
     await page.waitForTimeout(300);
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
   });
