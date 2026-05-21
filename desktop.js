@@ -9,6 +9,10 @@
   var TASKBAR_HEIGHT = 28;
   var MIN_WIN_SIZE = { w: 300, h: 200 };
   var DBLCLICK_DELAY = 300;
+  // Drag clamps: minimum on-screen sliver kept visible during window drag so the
+  // user can always grab the title bar back from the viewport edges.
+  var DRAG_EDGE_MARGIN_X = 100; // px kept visible on the right edge
+  var DRAG_EDGE_MARGIN_Y = 30;  // px kept visible above the taskbar
 
   // --- Project Data ---
   var PROJECTS = [
@@ -548,7 +552,6 @@
   function onDragStart(e, windowId) {
     var win = windows.get(windowId);
     if (!win || win.state === 'maximized') return;
-    if (isMobile()) return;
 
     var rect = win.el.getBoundingClientRect();
     dragState.windowId = windowId;
@@ -582,8 +585,8 @@
     var y = e.clientY - dragState.offsetY;
 
     // Constrain to viewport
-    x = Math.max(0, Math.min(x, window.innerWidth - 100));
-    y = Math.max(0, Math.min(y, window.innerHeight - TASKBAR_HEIGHT - 30));
+    x = Math.max(0, Math.min(x, window.innerWidth - DRAG_EDGE_MARGIN_X));
+    y = Math.max(0, Math.min(y, window.innerHeight - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
 
     dragState.pendingX = x;
     dragState.pendingY = y;

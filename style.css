@@ -577,13 +577,68 @@ body {
 
 /* === Mobile / Touch ===
    Entry point for responsive rules on touch devices (no hover + coarse pointer).
-   U2 fills this in; for now it just keeps page scrolling sane on small viewports. */
+   Three breakpoints (phone-portrait, phone-landscape, tablet) ladder over a
+   single split so each tier can declare its own custom-property values.
+   NEVER use max-width alone for touch detection — desktop browsers narrowed
+   to <768px must keep the full experience (see docs/ideation 2026-04-29 #4). */
 @media (hover: none) and (pointer: coarse) {
   html, body {
     height: auto;
     overflow: auto;
     zoom: 1;
   }
+}
+
+/* --- Phone portrait (<480px wide, touch) --- */
+@media (hover: none) and (pointer: coarse) and (max-width: 479px) {
+  :root {
+    --icon-grid-cols: 3;
+    --taskbar-min-height: 44px;
+    --window-max-w: 100vw;
+    --window-max-h: calc(100vh - var(--taskbar-min-height));
+    --window-margin: 4px;
+  }
+  /* Restore the full-viewport desktop layout the U1 shell relaxed.
+     #desktop is height:100% so html/body must constrain to viewport. */
+  html, body { height: 100%; overflow: hidden; zoom: 1; }
+  /* Drag origins need pointer events without browser pan/zoom intercept. */
+  .title-bar, .desktop-icon { touch-action: none; }
+  /* Bare-background selection-rect handlers live on #desktop itself
+     (see desktop.js:1914). Suppress pan on the background, but keep
+     descendants free to manage their own touch behavior. */
+  #desktop { touch-action: none; }
+  #desktop > .window { touch-action: auto; }
+  /* .desktop-icon under #desktop > #icon-grid keeps touch-action: none from above. */
+}
+
+/* --- Phone landscape (480-767px wide, touch) --- */
+@media (hover: none) and (pointer: coarse) and (min-width: 480px) and (max-width: 767px) {
+  :root {
+    --icon-grid-cols: 5;
+    --taskbar-min-height: 44px;
+    --window-max-w: 100vw;
+    --window-max-h: calc(100vh - var(--taskbar-min-height));
+    --window-margin: 6px;
+  }
+  html, body { height: 100%; overflow: hidden; zoom: 1; }
+  .title-bar, .desktop-icon { touch-action: none; }
+  #desktop { touch-action: none; }
+  #desktop > .window { touch-action: auto; }
+}
+
+/* --- Tablet (>=768px wide, touch) --- */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
+  :root {
+    --icon-grid-cols: 8;
+    --taskbar-min-height: 44px;
+    --window-max-w: 96vw;
+    --window-max-h: calc(100vh - var(--taskbar-min-height) - 24px);
+    --window-margin: 12px;
+  }
+  html, body { height: 100%; overflow: hidden; zoom: 1; }
+  .title-bar, .desktop-icon { touch-action: none; }
+  #desktop { touch-action: none; }
+  #desktop > .window { touch-action: auto; }
 }
 
 /* === Context Menus === */
