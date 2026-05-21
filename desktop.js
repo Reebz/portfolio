@@ -130,6 +130,13 @@
   var cascadeIndex = 0;
   var clickTimeouts = new Map(); // iconId -> timeout
 
+  // U6: Viewport-change tracking. lastZoom is the body-zoom factor as of the
+  // last resize/orientationchange tick — used to detect desktop-browser-width
+  // crossings of 768px (where CSS flips body { zoom: 1.5 } ↔ 1.0). The bound
+  // flag guards against double-binding if init() ever runs twice.
+  var lastZoom = null;
+  var resizeHandlerBound = false;
+
   // Single source of truth for registering a window with both the routing whitelist
   // and the lifecycle map. Every window-creation path flows through this.
   function registerWindow(id, el, opts) {
@@ -1584,6 +1591,66 @@
     clampWindowToViewport(winEl);
   }
 
+  // U6: viewport change (resize + orientationchange) handling.
+  //
+  // Always: re-clamp every open window so it can't be stranded off-screen
+  // after a portrait↔landscape flip on phones or a desktop browser resize.
+  //
+  // Only on a zoom-factor crossing (body { zoom } flips 1.5 ↔ 1.0 as the
+  // viewport crosses 768px — rare desktop-browser-resize case; phones stay at
+  // zoom 1 throughout): also clamp each window's in-memory prevRect (the
+  // maximize/restore snapshot) into the new viewport's coordinate space and
+  // clear the persisted icon-positions so icons reflow under the CSS-driven
+  // mobile layout. Without that prevRect clamp, restoring a maximized window
+  // after the crossing could place it off-screen.
+  function onViewportChange() {
+    var currentZoom = getZoom();
+
+    // Always: clamp open windows to the new viewport. Maximized windows are
+    // pinned by CSS so the clamp is effectively a no-op for them; restrict
+    // the work to 'open' state windows to avoid disturbing maximized layout.
+    windows.forEach(function(win) {
+      if (!win || !win.el) return;
+      if (win.state !== 'open') return;
+      clampWindowToViewport(win.el);
+    });
+
+    // Only on zoom-change crossings: rewrite persisted state for the new
+    // coordinate space.
+    if (lastZoom !== null && currentZoom !== lastZoom) {
+      var vw = window.innerWidth;
+      var vh = window.innerHeight;
+      windows.forEach(function(win) {
+        if (!win || !win.prevRect) return;
+        win.prevRect.x = Math.max(0, Math.min(win.prevRect.x, vw - DRAG_EDGE_MARGIN_X));
+        win.prevRect.y = Math.max(0, Math.min(win.prevRect.y, vh - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
+        win.prevRect.w = Math.min(win.prevRect.w, vw);
+        win.prevRect.h = Math.min(win.prevRect.h, vh - TASKBAR_HEIGHT);
+      });
+      try { localStorage.removeItem('icon-positions'); } catch (e) {}
+    }
+
+    lastZoom = currentZoom;
+  }
+
+  // Idempotent binder. iOS Safari fires both resize and orientationchange on
+  // rotation, often back-to-back; we debounce through rAF so onViewportChange
+  // runs at most once per frame.
+  function bindViewportChangeHandler() {
+    if (resizeHandlerBound) return;
+    var rafId = null;
+    function debounced() {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(function() {
+        rafId = null;
+        onViewportChange();
+      });
+    }
+    window.addEventListener('resize', debounced);
+    window.addEventListener('orientationchange', debounced);
+    resizeHandlerBound = true;
+  }
+
   function getIconColumns() {
     var gridHeight = elIconGrid.clientHeight;
     return Math.max(1, Math.floor(gridHeight / 80));
@@ -2630,6 +2697,12 @@
     initSubmenus();
     layoutIcons();
     setupIconDrag();
+
+    // U6: seed lastZoom and bind the resize/orientationchange handler so open
+    // windows survive viewport changes and desktop-browser-width crossings of
+    // the 768px zoom boundary.
+    lastZoom = getZoom();
+    bindViewportChangeHandler();
 
     // Apply hash on load
     applyHashState();
