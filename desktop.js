@@ -1019,6 +1019,12 @@
   };
 
   function layoutIcons() {
+    // U3: on touch devices CSS Grid governs icon placement (see the
+    // mobile @media blocks in style.css). Bailing here also skips the
+    // localStorage 'icon-positions' restore — drag-to-rearrange is a
+    // mouse affordance, so persisted positions are mouse-only state.
+    if (isMobile()) return;
+
     var icons = elIconGrid.querySelectorAll('.desktop-icon');
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('icon-positions')); } catch(e) {}
@@ -1142,6 +1148,19 @@
 
   // --- Desktop Icon Events ---
   function handleIconClick(iconEl, windowId) {
+    // U3: single-tap to open on touch (WCAG 2.5.1, no double-tap
+    // dependency). Mouse path keeps the 300ms DBLCLICK_DELAY pattern
+    // so first-click-selects / second-click-opens still works.
+    if (isMobile()) {
+      var linkUrlTouch = iconEl.getAttribute('data-url');
+      if (linkUrlTouch) {
+        window.open(linkUrlTouch, '_blank', 'noopener');
+      } else {
+        openWindow(windowId);
+      }
+      return;
+    }
+
     var existing = clickTimeouts.get(windowId);
     if (existing) {
       // Second click — double-click
@@ -2019,6 +2038,37 @@
         var target = li;
         submenuTimeout = setTimeout(function() { closeSubmenu(target); }, 200);
       });
+
+      // U3: tap-to-toggle on touch (mouse path unchanged). The parent
+      // <button class="start-menu-item"> carries aria-haspopup, so we
+      // intercept its click and stop propagation to keep the start-menu
+      // delegator (which closes the menu on any click) from firing.
+      // openSubmenu/closeSubmenu already toggle aria-expanded.
+      var trigger = li.querySelector(':scope > [aria-haspopup]');
+      if (trigger) {
+        trigger.addEventListener('click', function(e) {
+          if (!isMobile()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (li.classList.contains('submenu-open')) {
+            closeSubmenu(li);
+          } else {
+            openSubmenu(li);
+          }
+        });
+      }
+    });
+
+    // U3: outside-tap closes any open submenus on touch. Scoped to
+    // taps that land outside #start-menu entirely — taps INSIDE the
+    // menu that don't hit a .has-submenu trigger (e.g., a leaf item)
+    // are handled by the existing start-menu delegator which calls
+    // closeAllSubmenus before closing the start menu.
+    document.addEventListener('click', function(e) {
+      if (!isMobile()) return;
+      if (!e.target.closest('#start-menu') && !e.target.closest('#start-button')) {
+        closeAllSubmenus();
+      }
     });
   }
 
