@@ -2100,8 +2100,18 @@
   }
 
   function launchPaint() {
-    createAppWindow('window-paint', 'untitled - Paint',
-      '<iframe src="https://jspaint.app" style="width:100%;height:100%;border:none;flex:1;"></iframe>',
+    // jspaint.app expects 800+ px and is unusable on phones. On phone-sized
+    // touch devices, skip iframe creation entirely (avoids focus traps and
+    // memory artifacts) and render a Win98-styled "best on desktop" note.
+    // Tablets keep the iframe — they have the room jspaint needs.
+    var isPhoneTouch = window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches;
+    var paintBody = isPhoneTouch
+      ? '<div class="paint-mobile-note">' +
+          '<img src="img/icons/paint-sm.png" alt="" class="paint-mobile-note-icon">' +
+          '<p>Paint runs best on a desktop with a mouse — open this site on a larger screen for the full experience.</p>' +
+        '</div>'
+      : '<iframe src="https://jspaint.app" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
+    createAppWindow('window-paint', 'untitled - Paint', paintBody,
       { width: '640px', height: '480px', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;' });
   }
 
