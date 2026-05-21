@@ -775,6 +775,35 @@ body {
     font-size: 16px !important;
     font-family: Tahoma, sans-serif !important;
   }
+
+  /* U5: title bar controls — extend the interactive surface to 44×44
+     per WCAG 2.5.5. Approach: padding extension with background-clip /
+     background-origin: content-box so the vendor 98.css SVG icon
+     (Minimize bar, Maximize square, Close X) renders only in the 16×14
+     content box at the button's center while the click target is the
+     full 44×44. min-width/min-height override the vendor 16/14 floor
+     because padding adds OUTSIDE width with box-sizing: content-box,
+     which would otherwise produce 16+padding boxes.
+
+     Trade-off vs the preferred ::before overlay: each button physically
+     occupies 44×44, so the title bar grows to ~48px on mobile (vendor
+     ~22px on desktop). Chosen here because 44×44 overlays on three
+     adjacent 16×14 buttons (0-2px gaps) all overlap, and the topmost
+     DOM-order overlay (Close) traps clicks intended for siblings. The
+     padding approach gives every button a clean, non-overlapping 44×44
+     surface that aligns with WCAG and survives Playwright's hit-test.
+     Mouse path unchanged — desktop browsers don't match (hover:none) +
+     (coarse). */
+  .title-bar-controls button {
+    box-sizing: content-box;
+    min-width: 0;
+    min-height: 0;
+    width: 16px;
+    height: 14px;
+    padding: 15px 14px;
+    background-clip: content-box;
+    background-origin: content-box;
+  }
 }
 
 /* --- Phone landscape (480-767px wide, touch) --- */
@@ -932,6 +961,20 @@ body {
     font-size: 16px !important;
     font-family: Tahoma, sans-serif !important;
   }
+
+  /* U5: title bar controls — 44×44 hit area via padding extension; SVG
+     icon stays in the 16×14 content box via background-clip:content-box.
+     See phone-portrait block above for full rationale. */
+  .title-bar-controls button {
+    box-sizing: content-box;
+    min-width: 0;
+    min-height: 0;
+    width: 16px;
+    height: 14px;
+    padding: 15px 14px;
+    background-clip: content-box;
+    background-origin: content-box;
+  }
 }
 
 /* --- Tablet (>=768px wide, touch) --- */
@@ -1043,6 +1086,21 @@ body {
        at the moment of focus; an inline style would otherwise win. */
     font-size: 16px !important;
     font-family: Tahoma, sans-serif !important;
+  }
+
+  /* U5: title bar controls — 44×44 hit area via padding extension; SVG
+     icon stays in the 16×14 content box via background-clip:content-box.
+     See phone-portrait block for full rationale. Tablet shares the same
+     control geometry. */
+  .title-bar-controls button {
+    box-sizing: content-box;
+    min-width: 0;
+    min-height: 0;
+    width: 16px;
+    height: 14px;
+    padding: 15px 14px;
+    background-clip: content-box;
+    background-origin: content-box;
   }
 }
 

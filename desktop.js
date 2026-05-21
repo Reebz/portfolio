@@ -1317,12 +1317,21 @@
 
       if (win.state === 'minimized') {
         restoreWindow(id);
+        // U5: a restored window may sit at a persisted prevRect that's
+        // now off-viewport (e.g., the user dragged it off-edge before
+        // minimizing). Re-check on touch.
+        recoverWindowIfOffScreen(win.el);
       } else if (win.state === 'open' || win.state === 'maximized') {
         if (activeWindowId === id) {
           minimizeWindow(id);
         } else {
           bringToFront(id);
           win.el.focus();
+          // U5: occlusion recovery — if the focused window's title bar
+          // isn't sufficiently visible (off-edge after a drag, behind
+          // chrome), clamp it back into reach. No-op on desktop and
+          // when the title bar is already reachable.
+          recoverWindowIfOffScreen(win.el);
         }
       }
     });
@@ -1555,6 +1564,24 @@
     // Also clamp to a non-negative origin in case left/top went < pad.
     if ((parseInt(winEl.style.left, 10) || 0) < pad) winEl.style.left = pad + 'px';
     if ((parseInt(winEl.style.top, 10) || 0) < pad) winEl.style.top = pad + 'px';
+  }
+
+  // U5: Occlusion recovery for taskbar-chip taps. After raising z-order
+  // (bringToFront) or restoring from minimize (restoreWindow), check
+  // whether the window's title bar has enough screen room to be tapped:
+  // ≥12px tall above the taskbar AND ≥44px wide. If not, fall back to
+  // clampWindowToViewport so the window snaps back into reach. Touch
+  // only — desktop drag already clamps to mouse coordinates within the
+  // viewport via onDragMove.
+  function recoverWindowIfOffScreen(winEl) {
+    if (!winEl || !isMobile()) return;
+    var rect = winEl.getBoundingClientRect();
+    var taskbarEl = document.getElementById('taskbar');
+    var taskbarH = taskbarEl ? taskbarEl.getBoundingClientRect().height : TASKBAR_HEIGHT;
+    var visibleH = Math.min(rect.bottom, window.innerHeight - taskbarH) - Math.max(rect.top, 0);
+    var visibleW = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
+    if (visibleH >= 12 && visibleW >= 44) return;
+    clampWindowToViewport(winEl);
   }
 
   function getIconColumns() {
