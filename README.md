@@ -19,7 +19,8 @@ What's this for? Fun and nostalgia. I wanted to bring back the feeling of the PC
 - Minesweeper, Calculator, Paint (via jspaint.app), and a paginated Help book
 - Various easter eggs!
 - Formspree-powered contact form styled as Outlook Express
-- DOS terminal view on mobile
+- Responsive Win98 desktop on phones — touch drag, single-tap activation, multi-column icon grid, slide-in Start submenus
+- iPads inherit the full desktop experience (BIOS boot included)
 - 404 page styled as a Windows error dialog
 
 ## Tech
@@ -30,24 +31,42 @@ What's this for? Fun and nostalgia. I wanted to bring back the feeling of the PC
 
 ## Testing
 
-Playwright drives the test suite across three projects: `desktop` (chromium), `iphone-14` (mobile Safari emulation), and `ipad-pro-11` (tablet regression).
+Playwright drives the test suite across five projects:
+
+- `desktop` (chromium, default viewport)
+- `iphone-se` (375×667 emulated WebKit)
+- `iphone-14` (390×844 emulated WebKit) — the canonical mobile project
+- `iphone-14-pro-max` (430×932 emulated WebKit)
+- `ipad-pro-11` (834×1194 emulated WebKit) — tablet-inherits-desktop regression
 
 ```bash
 npm test                                  # run everything
-npx playwright test --project=iphone-14   # phone specs only
+npx playwright test --project=iphone-14   # one project only
 ```
+
+CI runs the full suite on every PR + push to `main` via `.github/workflows/playwright.yml`. The `playwright` status check is intended for branch protection.
 
 ### Updating screenshot baselines
 
-`tests/mobile-screenshots.spec.js` captures four canonical phone chrome states as PNG baselines under `tests/mobile-screenshots.spec.js-snapshots/`. They run only under the `iphone-14` project so we commit one set of PNGs, not three.
+`tests/mobile-screenshots.spec.js` captures four canonical phone chrome states as PNG baselines under `tests/mobile-screenshots.spec.js-snapshots/`. They run only under the `iphone-14` project so we commit one canonical set, not three.
 
-When mobile chrome legitimately changes (new icon, taskbar redesign, Start menu tweak, etc.), regenerate the baselines and commit the new PNGs alongside the change:
+Playwright stores per-platform baselines (`-darwin.png` for macOS, `-linux.png` for Linux CI). Both must stay in sync — regenerate BOTH when chrome legitimately changes:
 
 ```bash
+# macOS (your local machine)
 npx playwright test mobile-screenshots --update-snapshots --project=iphone-14
+
+# Linux (via the same Docker image CI uses)
+docker run --rm --network host -v "$(pwd):/work" -w /work \
+  mcr.microsoft.com/playwright:v1.58.2-jammy \
+  bash -c "npm ci && npx playwright test mobile-screenshots --update-snapshots --project=iphone-14"
 ```
 
 Review the updated PNGs in `git diff` to confirm they reflect the intended change before committing.
+
+### Real-device runbook
+
+Automated tests catch most regressions but cannot fully model real iOS Safari touch behavior. Walk through [`docs/runbooks/mobile-real-device-test.md`](docs/runbooks/mobile-real-device-test.md) on an actual iPhone + iPad before merging any PR that touches mobile-affecting code (style.css mobile @media blocks, desktop.js `isMobile()` paths, taskbar/Start markup, or boot.js).
 
 ## Acknowledgements
 

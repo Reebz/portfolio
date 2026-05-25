@@ -729,6 +729,19 @@
   });
 
   // --- Start Menu ---
+  // Close the Start menu if it's currently open. Called from contexts that
+  // stop click propagation (e.g., system-tray click handlers) where the
+  // global handleGlobalClick outside-tap path would otherwise be blocked.
+  function closeStartMenuIfOpen() {
+    var menu = document.getElementById('start-menu');
+    if (menu && menu.classList.contains('open')) {
+      menu.classList.remove('open');
+      var startBtn = document.getElementById('start-button');
+      if (startBtn) startBtn.setAttribute('aria-expanded', 'false');
+      closeAllSubmenus();
+    }
+  }
+
   function handleGlobalClick(e) {
     var startBtn = document.getElementById('start-button');
     var menu = document.getElementById('start-menu');
@@ -983,6 +996,12 @@
     if (elVisitorCounter) {
       elVisitorCounter.style.cursor = 'default';
       elVisitorCounter.addEventListener('click', function(e) {
+        // Tray clicks stop propagation so the desktop click delegator
+        // doesn't interpret them as a desktop tap — but that also blocked
+        // handleGlobalClick from closing an open Start menu. Close it
+        // explicitly here so the tap-tray-to-close-Start behavior works
+        // without re-enabling the desktop delegator side-effect.
+        closeStartMenuIfOpen();
         e.stopPropagation();
         var win = windows.get('window-visitor-counter');
         if (win && (win.state === 'open' || win.state === 'maximized')) {
@@ -1004,6 +1023,9 @@
     if (elClock) {
       elClock.style.cursor = 'default';
       elClock.addEventListener('click', function(e) {
+        // See visitor-counter comment above — close Start menu before
+        // stopPropagation so the global click delegator doesn't fire.
+        closeStartMenuIfOpen();
         e.stopPropagation();
         var win = windows.get('window-clock');
         if (win && (win.state === 'open' || win.state === 'maximized')) {
@@ -2230,12 +2252,20 @@
 
   function initSubmenus() {
     document.querySelectorAll('.has-submenu').forEach(function(li) {
+      // Hover-cascade is mouse-only. On touch devices, iOS Safari synthesizes
+      // a mouseenter on tap (because there's no hover state), and the 350ms
+      // deferred openSubmenu races mobile's tap-to-toggle handler below —
+      // the deferred fire reopens a submenu the back-tap just closed. Gate
+      // both hover listeners on !isMobile() so the tap path owns submenu
+      // state exclusively on touch.
       li.addEventListener('mouseenter', function() {
+        if (isMobile()) return;
         clearTimeout(submenuTimeout);
         var target = li;
         submenuTimeout = setTimeout(function() { openSubmenu(target); }, 350);
       });
       li.addEventListener('mouseleave', function() {
+        if (isMobile()) return;
         clearTimeout(submenuTimeout);
         var target = li;
         submenuTimeout = setTimeout(function() { closeSubmenu(target); }, 200);
