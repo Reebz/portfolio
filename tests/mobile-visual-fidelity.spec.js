@@ -35,36 +35,12 @@ const { test, expect } = require('@playwright/test');
 // produce this on any chrome surface that should be opaque-silver.
 const TITLE_BAR_BLUE = 'rgb(0, 0, 128)';
 
-// Visual-fill ratio floor for title-bar control glyphs. Current
-// implementation: background-size 16x14 (224 px²) inside a 30x30
-// button (900 px²) = 0.249. The B3 bug pattern had ratios under 0.10
-// (small glyph in big transparent ring). 0.15 keeps clearance above
-// the bug and below the current implementation, so future visual
-// scaling regressions surface immediately.
-const VISUAL_FILL_FLOOR = 0.15;
-
 async function openAboutWindow(page) {
   await page.evaluate(() => {
     sessionStorage.setItem('booted', '1');
     window.location.hash = '#window-about';
   });
   await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
-}
-
-// Parse a background-size pixel value like "16px 14px" or "16px" into
-// an [w, h] pair. Returns null when the value is non-pixel (auto,
-// cover, contain). The mobile title-bar button rule pins an explicit
-// px value, so the null branch documents the case where the spec
-// would not apply.
-function parseBgSizePx(value) {
-  const parts = value.split(/\s+/);
-  const px = parts.map((p) => {
-    const m = p.match(/^(\d+(?:\.\d+)?)px$/);
-    return m ? parseFloat(m[1]) : null;
-  });
-  if (px.some((v) => v === null)) return null;
-  // Single-value background-size applies to both axes per CSS spec.
-  return px.length === 1 ? [px[0], px[0]] : [px[0], px[1]];
 }
 
 test.describe('Mobile visual fidelity — chrome elements', () => {
@@ -94,37 +70,27 @@ test.describe('Mobile visual fidelity — chrome elements', () => {
       expect(bg).not.toBe('transparent');
     });
 
-    test(`B2: ${label} button visual fills hit area (no transparent padding ring)`, async ({ page }) => {
+    test(`B2: ${label} button chrome fills hit area (no transparent padding ring)`, async ({ page }) => {
       await openAboutWindow(page);
       const btn = page.locator(`#window-about [aria-label="${label}"]`);
       await expect(btn).toBeAttached();
       // background-clip MUST NOT be content-box: that was the exact
       // CSS the B2 bug shipped — content-box clips the silver fill to
-      // the inside-padding region, leaving the padding transparent.
+      // the inside-padding region, leaving the padding transparent and
+      // revealing the title-bar blue through it.
       const clip = await btn.evaluate((el) => getComputedStyle(el).backgroundClip);
       expect(clip).not.toBe('content-box');
 
-      // Visual-fill ratio of the glyph itself. The glyph (the SVG
-      // background-image) is what the user perceives as "the button".
-      // If background-size is auto or smaller than expected, the
-      // ratio drops and the assertion fails.
-      const { bgSize, box } = await btn.evaluate((el) => {
-        const cs = getComputedStyle(el);
-        const r = el.getBoundingClientRect();
-        return {
-          bgSize: cs.backgroundSize,
-          box: { width: r.width, height: r.height },
-        };
-      });
-      const dims = parseBgSizePx(bgSize);
-      expect(dims, `background-size must be explicit px (got "${bgSize}")`).not.toBeNull();
-      const glyphArea = dims[0] * dims[1];
-      const boxArea = box.width * box.height;
-      const ratio = glyphArea / boxArea;
-      expect(
-        ratio,
-        `${label}: glyph ${dims[0]}x${dims[1]}=${glyphArea}px² vs box ${box.width}x${box.height}=${boxArea}px² ratio ${ratio.toFixed(3)} below floor ${VISUAL_FILL_FLOOR}`
-      ).toBeGreaterThanOrEqual(VISUAL_FILL_FLOOR);
+      // background-position must be `center` (or equivalent) so the
+      // native-sized vendor glyph sits in the middle of the 30x30 button.
+      // Vendor 98.css uses `top 2px left 3px` / `bottom 3px left 4px`
+      // pixel offsets that look right at vendor's 16x14 button but bunch
+      // into the top-left of our larger touch-friendly button — that's
+      // the "not centered" half of the visual bug the user reported.
+      const bgPos = await btn.evaluate((el) => getComputedStyle(el).backgroundPosition);
+      expect(bgPos.toLowerCase(), `${label}: background-position "${bgPos}" not centered`).toMatch(
+        /^(50%\s+50%|center\s+center|center)$/
+      );
     });
 
     test(`B2: ${label} button hit area >= 30x30`, async ({ page }) => {

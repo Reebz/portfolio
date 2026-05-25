@@ -182,7 +182,13 @@ body {
   left: 0 !important;
   top: 0 !important;
   width: 100% !important;
-  height: calc(100% - var(--taskbar-height)) !important;
+  /* CSS variable cascade: mobile @media declares --taskbar-min-height (44px);
+     desktop has only --taskbar-height (28px). The var() fallback resolves to
+     the mobile value when present, otherwise the desktop one — so maximize
+     leaves the right gap above the taskbar on both. */
+  height: calc(100% - var(--taskbar-min-height, var(--taskbar-height))) !important;
+  /* Reset the mobile .window margin so maximize is truly flush to the edges. */
+  margin: 0 !important;
   transform: none !important;
 }
 
@@ -894,12 +900,19 @@ body {
     padding: 0;
     background-clip: border-box;
     background-origin: border-box;
-    /* Keep vendor 98.css SVG glyph centered at native size inside the larger button */
-    background-size: 16px 14px;
-    background-position: center;
-    background-repeat: no-repeat;
     /* B1: restore iOS tap-to-click — overrides .title-bar { touch-action: none } inheritance */
     touch-action: manipulation;
+  }
+  /* Glyph centering — vendor 98.css uses pixel-offset positions (e.g.,
+     `bottom 3px left 4px` for Minimize) that look right at vendor's 16x14
+     button but bunch into the top-left corner of our 30x30 button. Also
+     vendor's [aria-label=X] selector has specificity 0,2,0 so we need the
+     same to override its background-position. Native glyph sizes (6x2
+     Minimize, 9x9 Maximize, 8x7 Close) are preserved — DO NOT set
+     background-size or the tiny Minimize bar stretches into a solid block. */
+  .title-bar-controls button[aria-label] {
+    background-position: center;
+    background-repeat: no-repeat;
   }
 }
 
@@ -1305,8 +1318,22 @@ a:focus-visible,
 
 /* === System Properties Dialog === */
 .sysprop-window {
+  /* Desktop-class floor; mobile @media below relaxes it for phones
+     narrower than 360px (Galaxy Fold etc) where the floor would force
+     horizontal overflow past the viewport edge. */
   min-width: 360px;
   min-height: auto;
+}
+
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  .sysprop-window {
+    /* Phones inherit the .window { min-width: auto } mobile override at
+       the same specificity, but .sysprop-window's 360px floor wins via
+       selector specificity (0,1,0 vs 0,0,1). Tie to the same mobile
+       breakpoint so System Properties stays within the viewport on any
+       phone width. */
+    min-width: auto;
+  }
 }
 
 .sysprop-tabs {

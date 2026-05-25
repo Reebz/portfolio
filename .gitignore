@@ -1,6 +1,11 @@
 # OS
 .DS_Store
 thumbs.db
+# macOS Finder duplicates — appear when iCloud Drive / Finder copies
+# files mid-session (typically named `foo 2.ext`, `foo 3.ext`, etc.).
+# Untracked and noisy in `git status`; never commit them.
+* [2-9].*
+*\ [2-9].*
 
 # Editor / IDE
 *.swp
