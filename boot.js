@@ -1,13 +1,31 @@
 ;(function() {
   'use strict';
 
+  // Safari Private Browsing throws SecurityError on storage access.
+  function safeGetItem(storage, key) {
+    try { return storage.getItem(key); } catch (e) { return null; }
+  }
+  function safeSetItem(storage, key, value) {
+    try { storage.setItem(key, value); } catch (e) {}
+  }
+
+  // Recovery path if anything wedges the boot sequence (AudioContext init
+  // blocked, image decode hung, exception in a stage). Runs the full boot
+  // teardown — clearing the 'booting' class alone would leave the opaque
+  // #boot-overlay (z-index 99999) covering the viewport.
+  var deadman = setTimeout(function() {
+    console.warn('[boot] deadman fired');
+    completeBoot();
+  }, 15000);
+
   // Skip boot on phones (touch + small viewport), reduced motion, hash deep
   // links, or repeat visits. Tablets (touch + 768+) still run the boot sequence
   // — their screens are big enough that the full desktop experience works.
-  if (sessionStorage.getItem('booted') ||
+  if (safeGetItem(sessionStorage, 'booted') ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
       window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches ||
       window.location.hash) {
+    clearTimeout(deadman);
     document.body.classList.remove('booting');
     return;
   }
@@ -52,9 +70,17 @@
   var startMenu = document.getElementById('start-menu');
 
   var stage = 0;
-  var timer;
+  var timers = [];
   var lineIndex;
   var outputEl;
+
+  // Track every pending setTimeout so completeBoot can clear them all.
+  // The previous `var timer` only held the last assignment, leaving stray
+  // timers (e.g. the splash watchdog) free to fire on a detached overlay.
+  function track(id) { timers.push(id); return id; }
+  function clearTimers() {
+    while (timers.length) clearTimeout(timers.pop());
+  }
 
   // Highlight helper — bright white for emphasis
   function hi(text) { return '<span style="color:' + WHITE + '">' + text + '</span>'; }
@@ -115,13 +141,13 @@
       // Show bottom text
       var bottom = document.getElementById('post-bottom');
       if (bottom) bottom.style.display = 'block';
-      timer = setTimeout(nextStage, 1500);
+      track(setTimeout(nextStage, 1500));
 
     } else if (stage === 3) {
       // =============== POST BEEP + BLACK SCREEN ===============
       dosBeep();
       overlay.innerHTML = '';
-      timer = setTimeout(nextStage, 600);
+      track(setTimeout(nextStage, 600));
 
     } else if (stage === 4) {
       // =============== WINDOWS 98 STARTUP SPLASH ===============
@@ -149,12 +175,12 @@
           '<div style="position:absolute;left:50%;bottom:32px;transform:translateX(-50%);width:480px;height:16px;background:linear-gradient(180deg,#0a1450 0%,#1a2c7a 100%);border:1px solid;border-color:#000820 #6378b8 #6378b8 #000820;box-shadow:inset 0 0 1px rgba(0,0,0,0.6);overflow:hidden;">' +
             '<div style="width:160px;height:100%;background:linear-gradient(90deg,rgba(72,116,232,0) 0%,rgba(72,116,232,0.55) 18%,#7aa6ff 50%,rgba(72,116,232,0.55) 82%,rgba(72,116,232,0) 100%);animation:win98-progress 1.6s linear infinite;"></div>' +
           '</div>';
-        timer = setTimeout(nextStage, 2200);
+        track(setTimeout(nextStage, 2200));
       };
       splashImg.onload = paintSplash;
       splashImg.onerror = paintSplash;
       splashImg.src = splashSrc;
-      setTimeout(paintSplash, 200);
+      track(setTimeout(paintSplash, 200));
 
     } else {
       completeBoot();
@@ -164,7 +190,7 @@
   function typeNextLine() {
     if (stage !== 1) return;
     if (lineIndex >= postLines.length) {
-      timer = setTimeout(nextStage, 1000);
+      track(setTimeout(nextStage, 1000));
       return;
     }
 
@@ -175,12 +201,13 @@
       outputEl.appendChild(div);
     }
     lineIndex++;
-    timer = setTimeout(typeNextLine, line.delay);
+    track(setTimeout(typeNextLine, line.delay));
   }
 
   function completeBoot() {
-    clearTimeout(timer);
-    sessionStorage.setItem('booted', '1');
+    clearTimers();
+    clearTimeout(deadman);
+    safeSetItem(sessionStorage, 'booted', '1');
     overlay.style.transition = 'opacity 0.4s';
     overlay.style.opacity = '0';
     document.body.classList.remove('booting');

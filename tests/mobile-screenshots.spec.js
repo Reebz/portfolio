@@ -32,6 +32,15 @@
 // Update procedure documented in README.md "Updating screenshot baselines".
 
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter } = require('./_helpers');
+
+// Stub gc.zgo.at / goatcounter.com so CI never hits real analytics. Also
+// keeps the visitor-counter render deterministic for the masked screenshot
+// regions — though those regions are masked, a counter that's still "Loading…"
+// would change the bounding box.
+test.beforeEach(async ({ page }) => {
+  await mockGoatCounter(page);
+});
 
 // Defensive: even though playwright.config.js routes mobile-*.spec.js only
 // to phone projects, this guards against future config drift where another

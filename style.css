@@ -202,50 +202,6 @@ body {
   flex: 1;
 }
 
-/* === Project Window Content === */
-.project-screenshot {
-  width: 100%;
-  max-width: 640px;
-  height: auto;
-  display: block;
-  margin-bottom: 8px;
-  border: 1px solid var(--win98-grey);
-}
-
-.project-description {
-  margin: 8px 0;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.tech-stack {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 8px 0;
-}
-
-.tech-pill {
-  background: var(--win98-silver);
-  border: 1px solid;
-  border-color: var(--win98-white) var(--win98-dark) var(--win98-dark) var(--win98-white);
-  box-shadow: inset 1px 1px var(--win98-light), inset -1px -1px var(--win98-grey);
-  padding: 1px 6px;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  font-size: 10px;
-}
-
-.project-links {
-  margin: 8px 0;
-}
-
-.project-links a {
-  margin-right: 12px;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  font-size: 11px;
-}
-
 /* === Taskbar === */
 #taskbar {
   position: fixed;

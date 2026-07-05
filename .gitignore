@@ -4,8 +4,18 @@ thumbs.db
 # macOS Finder duplicates — appear when iCloud Drive / Finder copies
 # files mid-session (typically named `foo 2.ext`, `foo 3.ext`, etc.).
 # Untracked and noisy in `git status`; never commit them.
-* [2-9].*
-*\ [2-9].*
+# Listed per-extension so we don't accidentally ignore legitimately-named
+# files like `Chapter 2.md` or `Volume 3.zip`.
+* [2-9].js
+* [2-9].css
+* [2-9].html
+* [2-9].md
+* [2-9].json
+* [2-9].png
+* [2-9].gif
+* [2-9].webp
+* [2-9].yml
+* [2-9].yaml
 
 # Editor / IDE
 *.swp

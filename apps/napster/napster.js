@@ -42,8 +42,52 @@ function buildNapsterTransfers() {
     html += '<div class="napster-transfer">' +
       '<div class="napster-transfer-name">' + t.artist + ' - ' + t.song + '.mp3</div>' +
       '<div class="napster-transfer-bar"><div class="napster-transfer-fill" style="width:' + pct + '%"></div></div>' +
-      '<div class="napster-transfer-info">' + speed + ' KB/s \u2014 ' + status + ' (' + pct + '%)</div>' +
+      '<div class="napster-transfer-info">' + speed + ' KB/s — ' + status + ' (' + pct + '%)</div>' +
       '</div>';
   }
   return html;
 }
+
+// Contract: window.__initNapster() is safe to call on every launch, same as
+// __initCalculator/__initMinesweeper. The window element is reused across
+// close/reopen, so wiring runs once per page lifetime behind the guard below.
+// Previously the equivalent wiring lived inline in launchNapster and stacked
+// listeners on every relaunch.
+var napsterWired = false;
+
+window.__initNapster = function() {
+  var napWin = document.getElementById('window-napster');
+  if (!napWin) return;
+  if (napsterWired) return;
+  napsterWired = true;
+
+  var tabs = napWin.querySelectorAll('.napster-tabs [role="tab"]');
+  var panels = napWin.querySelectorAll('[role="tabpanel"]');
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.setAttribute('aria-selected', 'false'); });
+      panels.forEach(function(p) { p.style.display = 'none'; });
+      tab.setAttribute('aria-selected', 'true');
+      var panelId = tab.getAttribute('aria-controls');
+      var panel = document.getElementById(panelId);
+      if (panel) panel.style.display = 'flex';
+    });
+  });
+
+  var tbody = document.getElementById('napster-results-body');
+  if (tbody) {
+    tbody.addEventListener('dblclick', function(e) {
+      var row = e.target.closest('.napster-row');
+      if (row && row.dataset.url) {
+        window.open(row.dataset.url, '_blank', 'noopener');
+      }
+    });
+    tbody.addEventListener('click', function(e) {
+      var row = e.target.closest('.napster-row');
+      if (!row) return;
+      var prev = tbody.querySelector('[data-selected="true"]');
+      if (prev) prev.removeAttribute('data-selected');
+      row.setAttribute('data-selected', 'true');
+    });
+  }
+};

@@ -18,6 +18,12 @@
 // Per R1 we use real page.tap()/locator.tap() — no dispatchEvent.
 
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter } = require('./_helpers');
+
+// Stub gc.zgo.at / goatcounter.com so CI never hits real analytics.
+test.beforeEach(async ({ page }) => {
+  await mockGoatCounter(page);
+});
 
 // Tolerance for sub-pixel rounding when comparing scrollHeight vs clientHeight.
 // Mirrors the +1 used in mobile-icons-grid.spec.js so the constant is identical

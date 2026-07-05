@@ -13,6 +13,12 @@
 // meta-test enforces this going forward.
 
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter } = require('./_helpers');
+
+// Stub gc.zgo.at / goatcounter.com so CI never hits real analytics.
+test.beforeEach(async ({ page }) => {
+  await mockGoatCounter(page);
+});
 
 test.describe('Mobile cold load', () => {
   test.beforeEach(async ({ page }) => {

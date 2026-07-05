@@ -1,6 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter } = require('./_helpers');
+
+// Stub the analytics endpoints up-front so CI never hits gc.zgo.at /
+// reebz.goatcounter.com during this high-traffic suite. See tests/_helpers.js
+// for why this is partial-adoption rather than a fixture rewrite.
+test.beforeEach(async ({ page }) => {
+  await mockGoatCounter(page);
+});
 
 test.describe('BIOS Boot', () => {
   test('shows boot overlay on fresh visit', async ({ page }) => {

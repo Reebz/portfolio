@@ -381,29 +381,6 @@ Mitch</div>
       </div>
     </div>
 
-    <template id="project-window-template">
-      <div class="window" data-state="closed" role="dialog" tabindex="-1">
-        <div class="title-bar">
-          <img src="img/icons/project-sm.png" class="title-bar-icon" alt="" aria-hidden="true">
-          <div class="title-bar-text"></div>
-          <div class="title-bar-controls" role="toolbar" aria-label="Window controls">
-            <button aria-label="Minimize"></button>
-            <button aria-label="Maximize"></button>
-            <button aria-label="Close"></button>
-          </div>
-        </div>
-        <div class="window-body" role="document">
-          <img class="project-screenshot" loading="lazy" decoding="async" alt="">
-          <div class="project-description"></div>
-          <div class="tech-stack"></div>
-          <div class="project-links"></div>
-        </div>
-        <div class="status-bar">
-          <p class="status-bar-field"></p>
-        </div>
-      </div>
-    </template>
-
     <!-- Context Menus -->
     <div id="context-menu-desktop" class="context-menu" role="menu" aria-label="Desktop context menu">
       <button class="context-menu-item" role="menuitem" data-action="arrange-icons">Arrange Icons</button>
@@ -570,9 +547,10 @@ Mitch</div>
 
   <script src="boot.js"></script>
   <script src="apps/matrix/rain.js"></script>
-  <script src="apps/napster/napster.js"></script>
   <script defer src="desktop.js"></script>
+  <!-- Third-party stats; SRI omitted because gc.zgo.at updates count.js without notice. -->
   <script data-goatcounter="https://reebz.goatcounter.com/count"
-          async src="//gc.zgo.at/count.js"></script>
+          async src="https://gc.zgo.at/count.js"
+          onerror="console.warn('[gc] script failed to load')"></script>
 </body>
 </html>

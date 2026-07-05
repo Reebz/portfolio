@@ -20,99 +20,72 @@
       id: 'always-draft',
       title: 'Always dRaft',
       description: 'Blog',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/blog.png'
     },
     {
       id: 'claude-battery',
       title: 'Claude Battery',
       description: 'AI tool',
-      tech: [],
       url: 'https://claudebattery.com/',
       type: 'link',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/battery.png'
     },
     {
       id: 'avails-click',
       title: 'Avails Click',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/calendar.png'
     },
     {
       id: 'linkedin',
       title: 'LinkedIn',
       description: 'Professional profile',
-      tech: [],
       url: 'https://www.linkedin.com/in/mitchribar/',
       type: 'link',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/linkedin.png'
     },
     {
       id: 'obsidian-game',
       title: 'Obsidian Game',
       description: 'Game project',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/game.png'
     },
     {
       id: 'microgram',
       title: 'Microgram',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-27',
       icon: 'img/icons/microgram.png'
     },
     {
       id: 'prototypist',
       title: 'Prototypist',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-27',
       icon: 'img/icons/prototypist.png'
     },
     {
       id: 'cavaro',
       title: 'Cavaro',
       description: 'Stealth mode',
-      tech: [],
       url: null,
       type: 'cavaro',
-      screenshot: null,
-      updated: '2026-03-27',
       icon: 'img/icons/cavaro.png'
     },
     {
       id: 'snowball-dodge',
       title: 'Snowball Dodge',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-28',
       icon: 'img/icons/snowball.png'
     }
   ];
@@ -136,6 +109,68 @@
   // flag guards against double-binding if init() ever runs twice.
   var lastZoom = null;
   var resizeHandlerBound = false;
+
+  // Tracks which per-app <script> files have already been injected. Each
+  // launcher (calculator, minesweeper, napster) guards on this set so the
+  // app IIFE runs exactly once per page lifetime. Without the guard, a
+  // relaunch appended a fresh <script> tag every time, multiplying global
+  // document-level keydown/click handlers and re-running module-side init.
+  var appScriptLoaded = new Set();
+
+  // Per-window cleanup registry. Used by launchers that schedule timers,
+  // intervals, or RAF outside the window DOM (e.g. Matrix terminal's chained
+  // setTimeouts). closeWindow runs the registered fns before tearing down,
+  // so detached-DOM callbacks can't fire.
+  var windowCleanups = new Map();
+  function registerCleanup(windowId, fn) {
+    if (!windowCleanups.has(windowId)) windowCleanups.set(windowId, []);
+    windowCleanups.get(windowId).push(fn);
+  }
+  function runCleanups(windowId) {
+    var fns = windowCleanups.get(windowId);
+    if (!fns) return;
+    fns.forEach(function(fn) { try { fn(); } catch (e) {} });
+    windowCleanups.delete(windowId);
+  }
+
+  // Per-window lifecycle hooks. openHooks fire after openWindow brings a
+  // window to the front (covers hash deep-links and tray-click entry paths
+  // alike). minimizeHooks pause expensive per-window work (Matrix RAF,
+  // clock interval) when the window goes off-screen; restoreHooks resume.
+  var windowOpenHooks = {};
+  var windowMinimizeHooks = {};
+  var windowRestoreHooks = {};
+
+  // Defensive localStorage write. Private-mode Safari throws on setItem
+  // and Chromium can throw QuotaExceededError; either should not break
+  // the page. Callers that already wrap in try/catch can call this anyway.
+  function safeSet(key, value) {
+    try { localStorage.setItem(key, value); }
+    catch (e) { /* private mode or quota; silent */ }
+  }
+
+  // Defensive read twin. Takes the storage NAME, not the object — in
+  // storage-disabled contexts the window.localStorage getter itself throws
+  // SecurityError, so the property access has to happen inside the try.
+  // An uncaught throw here would abort the rest of init().
+  function safeRead(storageName, key) {
+    try { return window[storageName].getItem(key); }
+    catch (e) { return null; }
+  }
+
+  // Live taskbar height — mobile CSS pushes the taskbar to 44px via
+  // --taskbar-min-height; reading the element keeps tray popovers from
+  // sliding behind the bar on phones.
+  function getTaskbarHeight() {
+    var el = document.getElementById('taskbar');
+    return el ? el.getBoundingClientRect().height : TASKBAR_HEIGHT;
+  }
+
+  // Token bumped on every contact-form submit AND on every contact-window
+  // close. The post-success 1500ms timeout captures the token at submit
+  // time and only mutates state if its captured value still matches —
+  // protects against mid-flight close/reopen wiping a fresh draft.
+  var contactSubmitToken = 0;
 
   // Single source of truth for registering a window with both the routing whitelist
   // and the lifecycle map. Every window-creation path flows through this.
@@ -204,6 +239,8 @@
     if (win.state === 'open' || win.state === 'maximized') {
       bringToFront(id);
       win.el.focus();
+      var existingHook = windowOpenHooks[id];
+      if (existingHook) existingHook();
       return;
     }
 
@@ -242,6 +279,9 @@
     // Update hash
     updateHash(id);
 
+    var openHook = windowOpenHooks[id];
+    if (openHook) openHook();
+
     announce(getTitleText(win.el) + ' opened');
   }
 
@@ -251,10 +291,14 @@
 
     // Cavaro self-destruct: save dismissal and remove icon
     if (id === 'window-cavaro') {
-      localStorage.setItem('cavaro-dismissed', Date.now());
+      safeSet('cavaro-dismissed', Date.now());
       var cavaroIcon = elIconGrid.querySelector('[data-window-id="window-cavaro"]');
       if (cavaroIcon) cavaroIcon.remove();
     }
+
+    // Run any per-window cleanup callbacks (matrix timers, etc.) before
+    // the DOM/handlers go away.
+    runCleanups(id);
 
     // Cancel matrix rain animation if closing the matrix window
     if (id === 'window-matrix') {
@@ -264,6 +308,13 @@
 
     // Stop analogue clock if closing the clock window
     if (id === 'window-clock') stopAnalogueClock();
+
+    // Bump the contact-submit token so any in-flight fetch resolution that
+    // tries to auto-close/reset the form becomes a no-op for the new instance.
+    if (id === 'window-contact') contactSubmitToken++;
+
+    // Reset help-book render guard so the next launch can re-render cleanly.
+    if (id === 'window-help-book') helpBookRendered = false;
 
     win.state = 'closed';
     win.el.setAttribute('data-state', 'closed');
@@ -309,7 +360,15 @@
     var win = windows.get(id);
     if (!win || win.state !== 'open' && win.state !== 'maximized') return;
 
-    // Save position before minimize
+    // Remember whether we were maximized so restore-from-minimize can
+    // reapply maximize state instead of stranding the window at its
+    // pre-maximize prevRect (issue: show-desktop on a maximized window
+    // would lose the maximize state).
+    win.wasMaximized = (win.state === 'maximized');
+
+    // Save position before minimize. In the 'open' case, capture the
+    // current rect; in the 'maximized' case prevRect already holds the
+    // pre-maximize position, so leave it alone.
     if (win.state === 'open') {
       win.prevRect = getWindowRect(win.el);
     }
@@ -328,6 +387,9 @@
       focusNextWindow();
     }
 
+    var minHook = windowMinimizeHooks[id];
+    if (minHook) minHook();
+
     announce(getTitleText(win.el) + ' minimized');
   }
 
@@ -336,19 +398,31 @@
     if (!win) return;
 
     if (win.state === 'minimized') {
-      win.state = 'open';
-      win.el.setAttribute('data-state', 'open');
       win.el.style.display = '';
 
-      if (win.prevRect) {
-        win.el.style.left = win.prevRect.x + 'px';
-        win.el.style.top = win.prevRect.y + 'px';
-        win.el.style.width = win.prevRect.w + 'px';
-        win.el.style.height = win.prevRect.h + 'px';
+      if (win.wasMaximized) {
+        win.state = 'maximized';
+        win.el.setAttribute('data-state', 'maximized');
+        win.wasMaximized = false;
+      } else {
+        win.state = 'open';
+        win.el.setAttribute('data-state', 'open');
+        if (win.prevRect) {
+          win.el.style.left = win.prevRect.x + 'px';
+          win.el.style.top = win.prevRect.y + 'px';
+          win.el.style.width = win.prevRect.w + 'px';
+          win.el.style.height = win.prevRect.h + 'px';
+        }
       }
+
+      clampWindowToViewport(win.el);
 
       bringToFront(id);
       win.el.focus();
+
+      var resHook = windowRestoreHooks[id];
+      if (resHook) resHook();
+
       announce(getTitleText(win.el) + ' restored');
     }
   }
@@ -367,6 +441,7 @@
         win.el.style.width = win.prevRect.w + 'px';
         win.el.style.height = win.prevRect.h + 'px';
       }
+      clampWindowToViewport(win.el);
       announce(getTitleText(win.el) + ' restored');
     } else if (win.state === 'open') {
       // Save current rect then maximize
@@ -561,7 +636,7 @@
       });
     }
 
-    e.target.releasePointerCapture(e.pointerId);
+    try { e.target.releasePointerCapture(e.pointerId); } catch (err) {}
     resizeState.active = false;
     resizeState.windowId = null;
     resizeState.edge = null;
@@ -639,9 +714,14 @@
       win.el.style.top = (dragState.pendingY / z) + 'px';
       win.el.style.willChange = '';
       dragState.suppressClick = true;
+    } else if (win && win.el) {
+      // Cancelled before drag threshold met — reset willChange anyway.
+      win.el.style.willChange = '';
     }
 
-    e.target.releasePointerCapture(e.pointerId);
+    // releasePointerCapture is safe to call when capture was already lost
+    // (pointercancel often arrives after the browser dropped capture).
+    try { e.target.releasePointerCapture(e.pointerId); } catch (err) {}
     dragState.windowId = null;
     dragState.active = false;
   }
@@ -767,29 +847,40 @@
   // --- Clock (Sydney, Australia timezone) ---
   var TIMEZONE = 'Australia/Sydney';
 
-  // Build a Date-equivalent { hours, minutes } for the configured timezone via
-  // Intl.DateTimeFormat.formatToParts. The previous toLocaleString round-trip
-  // was implementation-defined for non-ISO date strings and could degrade in
-  // some locales/engines.
+  // Build a Date-equivalent { hours, minutes, seconds } for the configured
+  // timezone via Intl.DateTimeFormat.formatToParts. The formatter is built
+  // once and reused so per-tick clock work doesn't rebuild it. Seconds are
+  // included so the analogue second hand and the digital :SS readout track
+  // real time instead of always rendering :00.
+  var sydneyFormatter = null;
+  function getSydneyFormatter() {
+    if (!sydneyFormatter) {
+      sydneyFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: TIMEZONE,
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    }
+    return sydneyFormatter;
+  }
+
   function getSydneyTimeParts() {
-    var parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: TIMEZONE,
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(new Date());
-    var hour = 0, minute = 0;
+    var parts = getSydneyFormatter().formatToParts(new Date());
+    var hour = 0, minute = 0, second = 0;
     parts.forEach(function(p) {
       if (p.type === 'hour') hour = parseInt(p.value, 10) % 24;
       else if (p.type === 'minute') minute = parseInt(p.value, 10);
+      else if (p.type === 'second') second = parseInt(p.value, 10);
     });
-    return { hours: hour, minutes: minute };
+    return { hours: hour, minutes: minute, seconds: second };
   }
 
   function getSydneyTime() {
     var p = getSydneyTimeParts();
     var d = new Date();
-    d.setHours(p.hours, p.minutes, 0, 0);
+    d.setHours(p.hours, p.minutes, p.seconds, 0);
     return d;
   }
 
@@ -822,6 +913,9 @@
   function startAnalogueClock() {
     var canvas = document.getElementById('analogue-clock');
     if (!canvas) return;
+    // Idempotent: callers include tray-click + window-open hook + restore hook.
+    // Running two intervals would double-draw and double the work per tick.
+    if (analogueClockInterval) return;
     var ctx = canvas.getContext('2d');
     var w = canvas.width;
     var h = canvas.height;
@@ -957,11 +1051,11 @@
   }
 
   function localFallbackCount() {
-    var count = parseInt(localStorage.getItem('visitor-count')) || 3;
-    if (!sessionStorage.getItem('counted')) {
+    var count = parseInt(safeRead('localStorage', 'visitor-count')) || 3;
+    if (!safeRead('sessionStorage', 'counted')) {
       count++;
-      sessionStorage.setItem('counted', '1');
-      localStorage.setItem('visitor-count', count);
+      try { sessionStorage.setItem('counted', '1'); } catch (e) {}
+      safeSet('visitor-count', count);
     }
     return formatCount(count);
   }
@@ -969,26 +1063,34 @@
   function initVisitorCounter() {
     if (!elVisitorCounter) return;
 
-    var cached = formatCount(localStorage.getItem(COUNTER_CACHE_KEY));
+    var cached = formatCount(safeRead('localStorage', COUNTER_CACHE_KEY));
     renderVisitorCount(cached || localFallbackCount());
 
     if (typeof fetch !== 'function') return;
 
     // Skip the network round-trip if we already fetched within the server cache window.
-    var fetchedAt = parseInt(sessionStorage.getItem(COUNTER_FETCHED_AT_KEY), 10);
+    var fetchedAt = parseInt(safeRead('sessionStorage', COUNTER_FETCHED_AT_KEY), 10);
     if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt < COUNTER_FETCH_TTL_MS) return;
 
-    fetch(COUNTER_URL)
+    // 8s timeout: long enough for a slow mobile network round-trip, short
+    // enough that hung captive-portal pages don't leave the request open
+    // forever. On timeout, the existing catch path keeps the cached/fallback
+    // display untouched.
+    var fetchOpts = {};
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      fetchOpts.signal = AbortSignal.timeout(8000);
+    }
+    fetch(COUNTER_URL, fetchOpts)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(data) {
         if (!data) return;
         var formatted = formatCount(data.count);
         if (!formatted) return;
-        localStorage.setItem(COUNTER_CACHE_KEY, formatted);
-        sessionStorage.setItem(COUNTER_FETCHED_AT_KEY, String(Date.now()));
+        safeSet(COUNTER_CACHE_KEY, formatted);
+        try { sessionStorage.setItem(COUNTER_FETCHED_AT_KEY, String(Date.now())); } catch (e) {}
         renderVisitorCount(formatted);
       })
-      .catch(function() { /* keep cached/fallback display */ });
+      .catch(function() { /* timeout or network error — keep cached/fallback display */ });
   }
 
   // --- System Tray Click Handlers ---
@@ -1013,7 +1115,7 @@
             win.el.style.left = 'auto';
             win.el.style.right = '80px';
             win.el.style.top = 'auto';
-            win.el.style.bottom = (TASKBAR_HEIGHT + 4) + 'px';
+            win.el.style.bottom = (getTaskbarHeight() + 4) + 'px';
             win.el.style.position = 'fixed';
           }
         }
@@ -1030,15 +1132,15 @@
         var win = windows.get('window-clock');
         if (win && (win.state === 'open' || win.state === 'maximized')) {
           closeWindow('window-clock');
-          stopAnalogueClock();
         } else {
+          // openWindow fires the windowOpenHooks['window-clock'] entry which
+          // starts the analogue clock, so no explicit call needed here.
           openWindow('window-clock');
-          startAnalogueClock();
           if (win && win.el) {
             win.el.style.left = 'auto';
             win.el.style.right = '4px';
             win.el.style.top = 'auto';
-            win.el.style.bottom = (TASKBAR_HEIGHT + 4) + 'px';
+            win.el.style.bottom = (getTaskbarHeight() + 4) + 'px';
             win.el.style.position = 'fixed';
           }
         }
@@ -1127,7 +1229,7 @@
         y: parseInt(icon.style.top) || 0
       };
     });
-    localStorage.setItem('icon-positions', JSON.stringify(positions));
+    safeSet('icon-positions', JSON.stringify(positions));
   }
 
   function setupIconDrag() {
@@ -1183,7 +1285,7 @@
       }
     });
 
-    elIconGrid.addEventListener('pointerup', function(e) {
+    function endIconDrag(e) {
       if (!iconDragState.active) return;
 
       if (iconDragState.rafId) {
@@ -1194,23 +1296,25 @@
       if (iconDragState.iconEl) {
         iconDragState.iconEl.style.zIndex = '';
         iconDragState.iconEl.style.opacity = '';
-        iconDragState.iconEl.releasePointerCapture(e.pointerId);
+        try { iconDragState.iconEl.releasePointerCapture(e.pointerId); } catch (err) {}
       }
 
       if (iconDragState.moved) {
         saveIconPositions();
         // Suppress the click that would follow
         dragState.suppressClick = true;
-        iconDragState.iconEl = null;
-        iconDragState.active = false;
-        iconDragState.moved = false;
-        return;
       }
 
       iconDragState.iconEl = null;
       iconDragState.active = false;
       iconDragState.moved = false;
-    });
+    }
+
+    elIconGrid.addEventListener('pointerup', endIconDrag);
+    // pointercancel: same teardown as pointerup so an interrupted icon drag
+    // (iOS edge-swipe, system gesture) doesn't strand the icon at opacity 0.7
+    // or block subsequent clicks via the suppressClick latch.
+    elIconGrid.addEventListener('pointercancel', endIconDrag);
   }
 
   // --- Desktop Icon Events ---
@@ -1360,6 +1464,18 @@
         return;
       }
       onDragEnd(e);
+    });
+
+    // pointercancel fires when the browser revokes pointer capture mid-drag
+    // (iOS edge-swipe, Android back gesture, OS popups, multi-touch).
+    // Without this, dragState.windowId stays set and the next click anywhere
+    // gets eaten by the suppressClick guard.
+    elDesktop.addEventListener('pointercancel', function(e) {
+      if (resizeState.active) {
+        onResizeEnd(e);
+        return;
+      }
+      if (dragState.windowId) onDragEnd(e);
     });
 
     // Taskbar clicks
@@ -1605,22 +1721,28 @@
   // (viewport.w - 4) and y + h fits within (viewport.h - taskbar - 4).
   function clampWindowToViewport(winEl) {
     if (!winEl) return;
+    // All persisted geometry (style.left/top/width/height) lives in pre-zoom
+    // CSS units. getBoundingClientRect() and window.innerWidth/innerHeight
+    // return post-zoom device units. Convert reads into CSS units before
+    // mixing them with style writes — otherwise tablets (body { zoom: 1.5 })
+    // get a clamp value off by a factor of zoom.
+    var z = getZoom();
     var rect = winEl.getBoundingClientRect();
-    var vw = window.innerWidth;
-    var vh = window.innerHeight;
-    // Read the computed taskbar floor (44px on touch) rather than the
-    // desktop 28 — the touch CSS overrides --taskbar-height implicitly via
-    // --taskbar-min-height, so the bottom inset must match what's on-screen.
+    var rectW = rect.width / z;
+    var rectH = rect.height / z;
+    var vw = window.innerWidth / z;
+    var vh = window.innerHeight / z;
     var taskbarEl = document.getElementById('taskbar');
-    var taskbarH = taskbarEl ? taskbarEl.getBoundingClientRect().height : TASKBAR_HEIGHT;
+    var taskbarH = taskbarEl
+      ? (taskbarEl.getBoundingClientRect().height / z)
+      : TASKBAR_HEIGHT;
     var pad = 4;
-    var maxLeft = Math.max(pad, vw - rect.width - pad);
-    var maxTop = Math.max(pad, vh - taskbarH - rect.height - pad);
+    var maxLeft = Math.max(pad, vw - rectW - pad);
+    var maxTop = Math.max(pad, vh - taskbarH - rectH - pad);
     var curLeft = parseInt(winEl.style.left, 10) || 0;
     var curTop = parseInt(winEl.style.top, 10) || 0;
     if (curLeft > maxLeft) winEl.style.left = maxLeft + 'px';
     if (curTop > maxTop) winEl.style.top = maxTop + 'px';
-    // Also clamp to a non-negative origin in case left/top went < pad.
     if ((parseInt(winEl.style.left, 10) || 0) < pad) winEl.style.left = pad + 'px';
     if ((parseInt(winEl.style.top, 10) || 0) < pad) winEl.style.top = pad + 'px';
   }
@@ -1657,37 +1779,34 @@
   // after the crossing could place it off-screen.
   function onViewportChange() {
     var currentZoom = getZoom();
+    var vw = window.innerWidth / currentZoom;
+    var vh = window.innerHeight / currentZoom;
 
-    // Always: clamp open windows to the new viewport. Maximized windows are
-    // pinned by CSS so the clamp is effectively a no-op for them; restrict
-    // the work to 'open' state windows to avoid disturbing maximized layout.
+    // Always: clamp open windows AND rewrite every window's prevRect snapshot
+    // into the new viewport's CSS-pixel coordinate space. The prevRect rewrite
+    // must run on every viewport change (phone rotation keeps zoom constant,
+    // so the zoom-crossing branch never fires on phones), otherwise
+    // toggleMaximize → restore can land the window off-screen.
     windows.forEach(function(win) {
       if (!win || !win.el) return;
-      if (win.state !== 'open') return;
-      clampWindowToViewport(win.el);
-    });
-
-    // Only on zoom-change crossings: rewrite persisted state for the new
-    // coordinate space.
-    if (lastZoom !== null && currentZoom !== lastZoom) {
-      var vw = window.innerWidth;
-      var vh = window.innerHeight;
-      windows.forEach(function(win) {
-        if (!win || !win.prevRect) return;
+      if (win.state === 'open') {
+        clampWindowToViewport(win.el);
+      }
+      if (win.prevRect) {
         win.prevRect.x = Math.max(0, Math.min(win.prevRect.x, vw - DRAG_EDGE_MARGIN_X));
         win.prevRect.y = Math.max(0, Math.min(win.prevRect.y, vh - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
         win.prevRect.w = Math.min(win.prevRect.w, vw);
         win.prevRect.h = Math.min(win.prevRect.h, vh - TASKBAR_HEIGHT);
-      });
+      }
+    });
+
+    // Only on zoom-change crossings: discard persisted icon positions so icons
+    // reflow under the CSS-driven mobile layout for the new mode.
+    if (lastZoom !== null && currentZoom !== lastZoom) {
       try { localStorage.removeItem('icon-positions'); } catch (e) {}
     }
 
-    // Re-arrange icons on every viewport change. layoutIcons() validates
-    // saved positions against the new bounds — if any fall outside, the
-    // whole saved state is discarded and icons reflow from scratch. This
-    // is the automatic equivalent of right-click → Arrange Icons.
     layoutIcons();
-
     lastZoom = currentZoom;
   }
 
@@ -1716,7 +1835,6 @@
 
   // --- Generate Desktop Icons + Project Windows ---
   function generateProjects() {
-    var template = document.getElementById('project-window-template');
     var startMenuProjects = document.getElementById('start-menu-projects');
 
     // System icons FIRST (My Computer, Recycle Bin, About Me, etc.)
@@ -1810,49 +1928,6 @@
       } else if (project.type === 'link') {
         // External link — no window, just open URL on double-click
         // We'll handle this in the icon click handler
-      } else {
-        // Standard project window from template
-        var clone = template.content.cloneNode(true);
-        var winEl = clone.querySelector('.window');
-        winEl.id = id;
-        winEl.setAttribute('aria-labelledby', 'title-' + project.id);
-        var titleText = clone.querySelector('.title-bar-text');
-        titleText.id = 'title-' + project.id;
-        titleText.textContent = project.title;
-        var desc = clone.querySelector('.project-description');
-        desc.textContent = project.description;
-        var techStack = clone.querySelector('.tech-stack');
-        project.tech.forEach(function(t) {
-          var pill = document.createElement('span');
-          pill.className = 'tech-pill';
-          pill.textContent = t;
-          techStack.appendChild(pill);
-        });
-        var links = clone.querySelector('.project-links');
-        if (project.url) {
-          var a = document.createElement('a');
-          a.href = project.url;
-          a.target = '_blank';
-          a.rel = 'noopener';
-          a.textContent = 'Visit';
-          links.appendChild(a);
-        }
-
-        var screenshot = clone.querySelector('.project-screenshot');
-        if (project.screenshot) {
-          screenshot.src = project.screenshot;
-          screenshot.alt = project.title + ' screenshot';
-          screenshot.width = 640;
-          screenshot.height = 400;
-        } else {
-          screenshot.remove();
-        }
-
-        var statusField = clone.querySelector('.status-bar-field');
-        statusField.textContent = 'Last updated: ' + project.updated;
-
-        elDesktop.appendChild(clone);
-        registerWindow(id, document.getElementById(id));
       }
 
       // Create desktop icon (for ALL project types)
@@ -1958,6 +2033,11 @@
           sendBtn.disabled = true;
         }
 
+        // Snapshot the per-submit token. closeWindow('window-contact') bumps
+        // the token, so a user who closes-and-reopens the form mid-flight
+        // gets a fresh draft instead of an auto-reset 1.5s after success.
+        var myToken = ++contactSubmitToken;
+
         // Build JSON body — Formspree recommends JSON for AJAX
         var data = {
           email: form.querySelector('[name="email"]').value,
@@ -1965,17 +2045,25 @@
           message: form.querySelector('[name="message"]').value
         };
 
-        fetch(form.action, {
+        var fetchOpts = {
           method: 'POST',
           body: JSON.stringify(data),
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
           }
-        }).then(function(response) {
+        };
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+          fetchOpts.signal = AbortSignal.timeout(8000);
+        }
+
+        fetch(form.action, fetchOpts).then(function(response) {
           if (response.ok) {
             if (sendBtn) sendBtn.textContent = 'Message Sent!';
             setTimeout(function() {
+              // Stale-submit guard: window was closed (and possibly reopened
+              // by now) during the success delay — leave the new instance alone.
+              if (myToken !== contactSubmitToken) return;
               closeWindow('window-contact');
               form.reset();
               if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
@@ -1988,8 +2076,14 @@
               if (sendBtn) { sendBtn.textContent = 'Send Failed - Try Again'; sendBtn.disabled = false; }
             });
           }
-        }).catch(function() {
-          if (sendBtn) { sendBtn.textContent = 'Send Failed - Try Again'; sendBtn.disabled = false; }
+        }).catch(function(err) {
+          if (!sendBtn) return;
+          if (err && err.name === 'TimeoutError') {
+            sendBtn.textContent = "Couldn't send — try again";
+          } else {
+            sendBtn.textContent = 'Send Failed - Try Again';
+          }
+          sendBtn.disabled = false;
         });
       });
     }
@@ -2071,7 +2165,7 @@
           case 'refresh': location.reload(); break;
           case 'properties': openWindow('window-my-computer'); break;
           case 'arrange-icons':
-            localStorage.removeItem('icon-positions');
+            try { localStorage.removeItem('icon-positions'); } catch (e) {}
             layoutIcons();
             break;
           case 'ctx-minimize':
@@ -2117,7 +2211,7 @@
   }
 
   // --- Selection Rectangle ---
-  var selectionState = { active: false, startX: 0, startY: 0, rafId: null };
+  var selectionState = { active: false, startX: 0, startY: 0, rafId: null, pointerId: null };
   var elSelectionRect;
 
   function setupSelectionRect() {
@@ -2129,16 +2223,26 @@
       if (e.target !== elDesktop && e.target !== elIconGrid) return;
       if (e.button !== 0) return;
 
+      var z = getZoom();
       var rect = elDesktop.getBoundingClientRect();
+      // Rect lives inside body { zoom: 1.5 } on iPads; pointer coords are in
+      // viewport pixels. Divide by zoom so the rect renders where the finger
+      // actually is instead of 1.5× away.
       selectionState.active = true;
-      selectionState.startX = e.clientX - rect.left;
-      selectionState.startY = e.clientY - rect.top;
+      selectionState.startX = (e.clientX - rect.left) / z;
+      selectionState.startY = (e.clientY - rect.top) / z;
+      selectionState.pointerId = e.pointerId;
 
       elSelectionRect.style.left = selectionState.startX + 'px';
       elSelectionRect.style.top = selectionState.startY + 'px';
       elSelectionRect.style.width = '0';
       elSelectionRect.style.height = '0';
       elSelectionRect.style.display = 'block';
+
+      // Capture the pointer so we receive pointerup/pointercancel even if
+      // the finger drifts outside #desktop before release — otherwise the
+      // rect can get stranded visible.
+      try { elDesktop.setPointerCapture(e.pointerId); } catch (err) {}
     });
 
     elDesktop.addEventListener('pointermove', function(e) {
@@ -2146,9 +2250,10 @@
       // Don't interfere with window drag
       if (dragState.windowId) { selectionState.active = false; elSelectionRect.style.display = 'none'; return; }
 
+      var z = getZoom();
       var rect = elDesktop.getBoundingClientRect();
-      var curX = e.clientX - rect.left;
-      var curY = e.clientY - rect.top;
+      var curX = (e.clientX - rect.left) / z;
+      var curY = (e.clientY - rect.top) / z;
 
       var x = Math.min(selectionState.startX, curX);
       var y = Math.min(selectionState.startY, curY);
@@ -2161,7 +2266,7 @@
       elSelectionRect.style.height = h + 'px';
     });
 
-    elDesktop.addEventListener('pointerup', function(e) {
+    function endSelection(e) {
       if (!selectionState.active) return;
       selectionState.active = false;
 
@@ -2182,7 +2287,18 @@
       }
 
       elSelectionRect.style.display = 'none';
-    });
+
+      if (selectionState.pointerId != null) {
+        try { elDesktop.releasePointerCapture(selectionState.pointerId); } catch (err) {}
+        selectionState.pointerId = null;
+      }
+    }
+
+    elDesktop.addEventListener('pointerup', endSelection);
+    // pointercancel: iOS/Android system gestures revoke capture without a
+    // matching pointerup — without this the rect stays visible until the
+    // next pointerdown.
+    elDesktop.addEventListener('pointercancel', endSelection);
   }
 
   // --- Cascading Submenus ---
@@ -2320,12 +2436,12 @@
       overlay.innerHTML = '<div>It\'s now safe to turn off<br>your computer.</div>';
       document.body.appendChild(overlay);
       setTimeout(function() {
-        sessionStorage.removeItem('booted');
+        try { sessionStorage.removeItem('booted'); } catch (e) {}
         location.reload();
       }, 3000);
     } else if (option.id === 'sd-restart' || option.id === 'sd-dos') {
-      sessionStorage.removeItem('booted');
-      localStorage.removeItem('cavaro-dismissed');
+      try { sessionStorage.removeItem('booted'); } catch (e) {}
+      try { localStorage.removeItem('cavaro-dismissed'); } catch (e) {}
       location.reload();
     }
   }
@@ -2392,7 +2508,11 @@
           '<img src="img/icons/paint-sm.png" alt="" class="paint-mobile-note-icon">' +
           '<p>Paint runs best on a desktop with a mouse — open this site on a larger screen for the full experience.</p>' +
         '</div>'
-      : '<iframe src="https://jspaint.app" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
+      // sandbox set conservatively — re-evaluate if jspaint breaks. Omits
+      // allow-top-navigation so the embedded app can't redirect the host
+      // page. allow-popups + allow-popups-to-escape-sandbox cover the
+      // "Open file in new tab" affordance some jspaint plugins use.
+      : '<iframe src="https://jspaint.app" sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox allow-forms" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
     createAppWindow('window-paint', 'untitled - Paint', paintBody,
       { width: '640px', height: '480px', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;' });
   }
@@ -2412,9 +2532,20 @@
     createAppWindow('window-minesweeper', 'Minesweeper', msHtml,
       { width: '250px', noResize: true, bodyStyle: 'padding:4px;margin:0;background:#c0c0c0;' });
 
-    var script = document.createElement('script');
-    script.src = 'apps/minesweeper/game.js';
-    document.getElementById('ms-app').appendChild(script);
+    // Load script once per page, then call init every launch. The init
+    // is internally idempotent (wires handlers on first call only) and
+    // always starts a fresh game.
+    function runInit() { if (window.__initMinesweeper) window.__initMinesweeper(); }
+    if (!appScriptLoaded.has('minesweeper')) {
+      var script = document.createElement('script');
+      script.src = 'apps/minesweeper/game.js';
+      script.onload = runInit;
+      script.onerror = function() { appScriptLoaded.delete('minesweeper'); script.remove(); };
+      document.head.appendChild(script);
+      appScriptLoaded.add('minesweeper');
+    } else {
+      runInit();
+    }
   }
 
   // Lazy-load apps/help/book.js on first launch. The file is ~63KB of static
@@ -2434,9 +2565,21 @@
     return bookLoadPromise;
   }
 
+  // Set to true once renderHelpBook has wired the current help-book window.
+  // Cleared in closeWindow so a fresh open reinitialises page state. Without
+  // this, two rapid launches that share the in-flight ensureBookLoaded promise
+  // would both .then(render), and the second .then would clobber any nav
+  // state established by the first.
+  var helpBookRendered = false;
+
   function launchHelpBook() {
-    ensureBookLoaded().then(renderHelpBook).catch(function() {
-      // Soft failure: open the window with a placeholder so the user sees something.
+    ensureBookLoaded().then(function() {
+      if (helpBookRendered && document.getElementById('window-help-book')) {
+        openWindow('window-help-book');
+        return;
+      }
+      renderHelpBook();
+    }).catch(function() {
       renderHelpBook(['<p style="padding:20px;color:#800000;">Help content failed to load. Please check your connection and try again.</p>']);
     });
   }
@@ -2486,6 +2629,7 @@
       bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;'
     });
     render();
+    helpBookRendered = true;
   }
 
   function launchCalculator() {
@@ -2526,9 +2670,20 @@
     createAppWindow('window-calculator', 'Calculator', calcHtml,
       { width: '240px', noResize: true, bodyStyle: 'padding:4px;margin:0;background:#c0c0c0;' });
 
-    var script = document.createElement('script');
-    script.src = 'apps/calculator/calc.js';
-    document.getElementById('calc-app').appendChild(script);
+    // Same pattern as Minesweeper. Previously the calc script attached a
+    // fresh global keydown handler on every launch, so after N opens a
+    // single keystroke fired N button clicks.
+    function runInit() { if (window.__initCalculator) window.__initCalculator(); }
+    if (!appScriptLoaded.has('calculator')) {
+      var script = document.createElement('script');
+      script.src = 'apps/calculator/calc.js';
+      script.onload = runInit;
+      script.onerror = function() { appScriptLoaded.delete('calculator'); script.remove(); };
+      document.head.appendChild(script);
+      appScriptLoaded.add('calculator');
+    } else {
+      runInit();
+    }
   }
 
   function launchNotepad() {
@@ -2569,92 +2724,107 @@
   }
 
   function launchNapster() {
-    var tabNames = ['Search', 'Library', 'Transfer'];
-    var tabsHtml = '<menu role="tablist" class="napster-tabs">';
-    tabNames.forEach(function(name, idx) {
-      tabsHtml += '<li role="tab" aria-selected="' + (idx === 0 ? 'true' : 'false') +
-        '" aria-controls="napster-panel-' + name.toLowerCase() + '">' + name + '</li>';
-    });
-    tabsHtml += '</menu>';
+    // Early-exit if the window already exists: createAppWindow re-opens
+    // existing windows but runInit would otherwise stack a fresh set of
+    // tab/tbody listeners on every relaunch — after 5 opens, one
+    // double-click would open 5 tabs.
+    var existingNap = document.getElementById('window-napster');
+    if (existingNap) { openWindow('window-napster'); return; }
 
-    var searchPanel =
-      '<div role="tabpanel" id="napster-panel-search" class="napster-panel" style="display:flex;">' +
-        '<div class="napster-search-bar">' +
-          '<label for="napster-search-input">Search:</label>' +
-          '<input type="text" id="napster-search-input" value="Artist" placeholder="Enter artist or song name">' +
-          '<button id="napster-find-btn">Find It!</button>' +
-        '</div>' +
-        '<div class="napster-results-wrap">' +
-          '<table class="napster-results">' +
-            '<thead><tr>' +
-              '<th>Song</th><th>Artist</th><th>Size</th><th>Bitrate</th><th>User</th><th>Connection</th>' +
-            '</tr></thead>' +
-            '<tbody id="napster-results-body">' +
-              buildNapsterSearchResults() +
-            '</tbody>' +
-          '</table>' +
-        '</div>' +
-      '</div>';
-
-    var libraryPanel =
-      '<div role="tabpanel" id="napster-panel-library" class="napster-panel" style="display:none;">' +
-        '<div class="napster-library-empty">Your shared folder is empty</div>' +
-      '</div>';
-
-    var transferPanel =
-      '<div role="tabpanel" id="napster-panel-transfer" class="napster-panel" style="display:none;">' +
-        '<div class="napster-transfer-list">' +
-          buildNapsterTransfers() +
-        '</div>' +
-      '</div>';
-
-    var bodyHtml =
-      tabsHtml +
-      '<div class="napster-panel-area">' +
-        searchPanel + libraryPanel + transferPanel +
-      '</div>' +
-      '<div class="status-bar napster-status"><p class="status-bar-field">8,342 users sharing 1,247,382 files</p></div>';
-
-    createAppWindow('window-napster', 'Napster v2.0 BETA 7', bodyHtml,
-      { width: '520px', height: '420px', bodyStyle: 'padding:4px;background:var(--win98-silver);display:flex;flex-direction:column;overflow:hidden;' });
-
-    // Wire tab switching
-    var napWin = document.getElementById('window-napster');
-    if (!napWin) return;
-    var tabs = napWin.querySelectorAll('.napster-tabs [role="tab"]');
-    var panels = napWin.querySelectorAll('[role="tabpanel"]');
-    tabs.forEach(function(tab) {
-      tab.addEventListener('click', function() {
-        tabs.forEach(function(t) { t.setAttribute('aria-selected', 'false'); });
-        panels.forEach(function(p) { p.style.display = 'none'; });
-        tab.setAttribute('aria-selected', 'true');
-        var panelId = tab.getAttribute('aria-controls');
-        var panel = document.getElementById(panelId);
-        if (panel) panel.style.display = 'flex';
+    function runInit() {
+      // Readiness guard, matching the calculator/minesweeper launchers: a
+      // second launch while napster.js is still fetching (or after a failed
+      // load) must be a no-op, not a ReferenceError from the calls below.
+      if (typeof buildNapsterSearchResults !== 'function') return;
+      // bodyHtml construction depends on buildNapsterSearchResults /
+      // buildNapsterTransfers, which live in napster.js — so the whole
+      // build-and-wire flow has to run after the script loads.
+      var tabNames = ['Search', 'Library', 'Transfer'];
+      var tabsHtml = '<menu role="tablist" class="napster-tabs">';
+      tabNames.forEach(function(name, idx) {
+        tabsHtml += '<li role="tab" aria-selected="' + (idx === 0 ? 'true' : 'false') +
+          '" aria-controls="napster-panel-' + name.toLowerCase() + '">' + name + '</li>';
       });
-    });
+      tabsHtml += '</menu>';
 
-    // Wire row double-click to open URL
-    var tbody = document.getElementById('napster-results-body');
-    if (tbody) {
-      tbody.addEventListener('dblclick', function(e) {
-        var row = e.target.closest('.napster-row');
-        if (row && row.dataset.url) {
-          window.open(row.dataset.url, '_blank', 'noopener');
-        }
-      });
-      // Single click selects
-      tbody.addEventListener('click', function(e) {
-        var row = e.target.closest('.napster-row');
-        if (!row) return;
-        var prev = tbody.querySelector('[data-selected="true"]');
-        if (prev) prev.removeAttribute('data-selected');
-        row.setAttribute('data-selected', 'true');
-      });
+      var searchPanel =
+        '<div role="tabpanel" id="napster-panel-search" class="napster-panel" style="display:flex;">' +
+          '<div class="napster-search-bar">' +
+            '<label for="napster-search-input">Search:</label>' +
+            '<input type="text" id="napster-search-input" value="Artist" placeholder="Enter artist or song name">' +
+            '<button id="napster-find-btn">Find It!</button>' +
+          '</div>' +
+          '<div class="napster-results-wrap">' +
+            '<table class="napster-results">' +
+              '<thead><tr>' +
+                '<th>Song</th><th>Artist</th><th>Size</th><th>Bitrate</th><th>User</th><th>Connection</th>' +
+              '</tr></thead>' +
+              '<tbody id="napster-results-body">' +
+                buildNapsterSearchResults() +
+              '</tbody>' +
+            '</table>' +
+          '</div>' +
+        '</div>';
+
+      var libraryPanel =
+        '<div role="tabpanel" id="napster-panel-library" class="napster-panel" style="display:none;">' +
+          '<div class="napster-library-empty">Your shared folder is empty</div>' +
+        '</div>';
+
+      var transferPanel =
+        '<div role="tabpanel" id="napster-panel-transfer" class="napster-panel" style="display:none;">' +
+          '<div class="napster-transfer-list">' +
+            buildNapsterTransfers() +
+          '</div>' +
+        '</div>';
+
+      var bodyHtml =
+        tabsHtml +
+        '<div class="napster-panel-area">' +
+          searchPanel + libraryPanel + transferPanel +
+        '</div>' +
+        '<div class="status-bar napster-status"><p class="status-bar-field">8,342 users sharing 1,247,382 files</p></div>';
+
+      createAppWindow('window-napster', 'Napster v2.0 BETA 7', bodyHtml,
+        { width: '520px', height: '420px', bodyStyle: 'padding:4px;background:var(--win98-silver);display:flex;flex-direction:column;overflow:hidden;' });
+
+      if (window.__initNapster) window.__initNapster();
+    }
+
+    if (!appScriptLoaded.has('napster')) {
+      var script = document.createElement('script');
+      script.src = 'apps/napster/napster.js';
+      script.onload = runInit;
+      script.onerror = function() { appScriptLoaded.delete('napster'); script.remove(); };
+      document.head.appendChild(script);
+      appScriptLoaded.add('napster');
+    } else {
+      runInit();
     }
   }
 
   function launchMatrixTerminal() {
+    // Idempotent re-launch: don't re-schedule the chained sequence on a
+    // window that's already running it (open, maximized, or minimized).
+    // A CLOSED Matrix window keeps its element in the DOM (not transient),
+    // so for that case fall through and replay the intro — after resetting
+    // the stale text/canvas left over from the previous run.
+    var existingMatrix = document.getElementById('window-matrix');
+    var matrixWin = windows.get('window-matrix');
+    if (existingMatrix && matrixWin && matrixWin.state !== 'closed') {
+      openWindow('window-matrix');
+      return;
+    }
+    if (existingMatrix) {
+      var staleText = document.getElementById('matrix-text');
+      var staleCanvas = document.getElementById('matrix-canvas');
+      if (staleText) { staleText.style.display = ''; staleText.innerHTML = ''; }
+      if (staleCanvas) {
+        if (staleCanvas._rafId) { cancelAnimationFrame(staleCanvas._rafId); staleCanvas._rafId = null; }
+        staleCanvas.style.display = 'none';
+      }
+    }
+
     createAppWindow('window-matrix', 'C:\\WINDOWS\\system32\\cmd.exe',
       '<div id="matrix-terminal" style="background:#000;color:#00FF00;font-family:\'Perfect DOS VGA 437\',\'Lucida Console\',monospace;font-size:14px;padding:8px;height:100%;position:relative;overflow:hidden;">' +
         '<div id="matrix-text"></div>' +
@@ -2669,10 +2839,22 @@
 
     var CURSOR = '<span style="animation:dos-cursor-blink 1s step-end infinite;">_</span>';
 
+    // Track every timer/interval so closeWindow can stop the chain mid-flight.
+    // Without this, closing during the 3s/3s/3s/4s hold leaks the pending
+    // setTimeouts and the typeText setInterval onto detached DOM nodes.
+    function track(setFn, fn, ms) {
+      var id = setFn(fn, ms);
+      registerCleanup('window-matrix', function() {
+        if (setFn === setTimeout) clearTimeout(id);
+        else clearInterval(id);
+      });
+      return id;
+    }
+
     function typeText(text, callback) {
       textEl.innerHTML = '';
       var i = 0;
-      var interval = setInterval(function() {
+      var interval = track(setInterval, function() {
         if (i < text.length) {
           textEl.innerHTML = text.substring(0, i + 1) + CURSOR;
           i++;
@@ -2686,17 +2868,23 @@
 
     // Phase 1: type "..." then hold 3 seconds
     typeText('...', function() {
-      setTimeout(function() {
+      track(setTimeout, function() {
         // Phase 2: type "Knock, knock, Neo." then hold 3 seconds
         typeText('Knock, knock, Neo.', function() {
-          setTimeout(function() {
+          track(setTimeout, function() {
             // Phase 3: type "..." then hold 4 seconds
             typeText('...', function() {
-              setTimeout(function() {
-                // Phase 4: Matrix rain
+              track(setTimeout, function() {
+                // Phase 4: Matrix rain. Skip the start if the window was
+                // minimized mid-intro — rAF keeps firing for display:none
+                // windows, so starting here would burn CPU on a hidden
+                // canvas. The restore hook (canvas shown && !_rafId) starts
+                // the rain on restore instead.
                 textEl.style.display = 'none';
                 canvasEl.style.display = 'block';
-                if (window.startMatrixRain) {
+                var mw = windows.get('window-matrix');
+                var visible = mw && (mw.state === 'open' || mw.state === 'maximized');
+                if (visible && window.startMatrixRain) {
                   window.startMatrixRain(canvasEl);
                 }
               }, 4000);
@@ -2748,6 +2936,12 @@
         '</div>' +
       '</div>';
 
+    // First-launch detection: capture whether the window existed before
+    // createAppWindow runs so we only apply the default right-anchored
+    // position once. Without this, every relaunch overwrote a manually
+    // dragged position.
+    var preExisting = !!document.getElementById('window-icq');
+
     createAppWindow('window-icq', 'ICQ', icqHtml, {
       width: '170px',
       height: '400px',
@@ -2755,10 +2949,14 @@
       bodyStyle: 'padding:0;overflow:hidden;display:flex;flex-direction:column;'
     });
 
-    // Position toward the right side of the desktop
+    if (preExisting) return;
+
+    // Position toward the right side of the desktop. Divide by body zoom
+    // (1.5 on iPads) so the window doesn't snap off-screen on tablets.
     var win = document.getElementById('window-icq');
     if (win) {
-      win.style.left = Math.max(0, window.innerWidth - 220) + 'px';
+      var z = getZoom();
+      win.style.left = Math.max(0, (window.innerWidth / z) - 220) + 'px';
       win.style.top = '40px';
     }
   }
@@ -2810,6 +3008,28 @@
     // the 768px zoom boundary.
     lastZoom = getZoom();
     bindViewportChangeHandler();
+
+    // Per-window lifecycle hooks. Clock interval and Matrix RAF cost real
+    // CPU when the window is hidden; pause them on minimize and resume on
+    // restore. Hash deep-link to #window-clock needs startAnalogueClock to
+    // fire from openWindow (the tray click path called it directly before).
+    windowOpenHooks['window-clock'] = startAnalogueClock;
+    windowMinimizeHooks['window-clock'] = stopAnalogueClock;
+    windowRestoreHooks['window-clock'] = startAnalogueClock;
+
+    windowMinimizeHooks['window-matrix'] = function() {
+      var c = document.getElementById('matrix-canvas');
+      if (c && c._rafId) {
+        cancelAnimationFrame(c._rafId);
+        c._rafId = null;
+      }
+    };
+    windowRestoreHooks['window-matrix'] = function() {
+      var c = document.getElementById('matrix-canvas');
+      if (c && c.style.display !== 'none' && window.startMatrixRain && !c._rafId) {
+        window.startMatrixRain(c);
+      }
+    };
 
     // Apply hash on load
     applyHashState();
