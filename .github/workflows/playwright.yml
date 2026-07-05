@@ -27,19 +27,6 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
       - name: Run Playwright tests
         run: npm test
-      # TEMPORARY: regenerate the Linux screenshot baselines and upload them so
-      # they can be committed (no local Docker to produce -linux.png). Remove
-      # this step once the Linux baselines are committed.
-      - name: Regenerate Linux screenshot baselines
-        if: always()
-        run: npx playwright test mobile-screenshots --update-snapshots --project=iphone-14
-      - name: Upload regenerated Linux baselines
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-screenshot-baselines
-          path: tests/mobile-screenshots.spec.js-snapshots/*-linux.png
-          retention-days: 14
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
