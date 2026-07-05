@@ -547,11 +547,17 @@
     resizeState.edge = edge;
     resizeState.startX = e.clientX;
     resizeState.startY = e.clientY;
+    // Snapshot size in CSS px so it stays in the same units as the style
+    // writes in onResizeMove. Read via getBoundingClientRect()/zoom (the
+    // clampWindowToViewport pattern), NOT offsetWidth/zoom: offsetWidth is
+    // already unzoomed, so dividing it by zoom double-counts and makes
+    // outward drags shrink the window under body zoom 1.5.
+    var rect = win.el.getBoundingClientRect();
     resizeState.startRect = {
       x: parseInt(win.el.style.left) || 0,
       y: parseInt(win.el.style.top) || 0,
-      w: win.el.offsetWidth / z,
-      h: win.el.offsetHeight / z
+      w: rect.width / z,
+      h: rect.height / z
     };
 
     // Disable pointer events on iframes during resize

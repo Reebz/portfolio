@@ -88,24 +88,31 @@ test.describe('Window drag, resize, z-index', () => {
     return page.locator('#window-guestbook');
   }
 
-  test('SE-corner drag invokes resize and mutates window dimensions', async ({ page }) => {
-    // Smoke test that a real pointer drag at the SE corner reaches the
-    // resize handler and writes new dimensions. We assert offsetWidth /
-    // offsetHeight (CSS pixels — the units desktop.js writes via
-    // `style.width = newW + 'px'`) so the test is independent of body
-    // zoom factor and any internal zoom-vs-CSS mismatch in the math.
-    //
-    // The earlier per-edge tests (SE-grow, NW-shrink, E-only) asserted
-    // boundingBox() deltas, which read zoomed viewport pixels — that made
-    // the assertions sensitive to how desktop.js interleaves zoomed
-    // clientX with unzoomed style.width. The MIN_WIN_SIZE clamp test
-    // below already pins the floor of that math. This test pins the
-    // "resize handler fires at all" surface.
+  test('SE-corner drag outward grows the window in the drag direction', async ({ page }) => {
+    // AE5: at desktop body zoom 1.5, dragging the SE corner outward must
+    // GROW both axes. The resize start-snapshot reads size via
+    // getBoundingClientRect()/zoom (CSS px), matching the CSS-px style
+    // writes; the earlier offsetWidth/zoom read double-divided by zoom
+    // (offsetWidth is already unzoomed) and made outward SE drags shrink
+    // the window. We assert direction (grow), not just that dimensions
+    // changed. offsetWidth/offsetHeight are the unzoomed CSS px desktop.js
+    // writes via `style.width = newW + 'px'`.
     const win = await openGuestbook(page);
+
+    // Pin a known size + position away from the viewport edges so growth
+    // is bounded only by the drag, never clamped by the viewport.
+    await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      el.style.left = '100px';
+      el.style.top = '100px';
+      el.style.width = '400px';
+      el.style.height = '300px';
+    });
+    await page.waitForTimeout(100);
 
     const before = await page.evaluate(() => {
       const el = document.getElementById('window-guestbook');
-      return { w: el.offsetWidth, h: el.offsetHeight, sw: el.style.width, sh: el.style.height };
+      return { w: el.offsetWidth, h: el.offsetHeight };
     });
 
     const startBox = await win.boundingBox();
@@ -124,19 +131,12 @@ test.describe('Window drag, resize, z-index', () => {
 
     const after = await page.evaluate(() => {
       const el = document.getElementById('window-guestbook');
-      return { w: el.offsetWidth, h: el.offsetHeight, sw: el.style.width, sh: el.style.height };
+      return { w: el.offsetWidth, h: el.offsetHeight };
     });
 
-    // Resize handler ran: both dimensions written via inline style and
-    // both dimensions differ from the starting CSS-pixel size. We don't
-    // assert direction (the SE-drag-grows invariant is broken under body
-    // zoom 1.5 in desktop.js — separate bug, tracked in the resize
-    // handler itself). What matters here is that the resize path is
-    // reachable from a real pointer drag and produces output.
-    expect(after.sw).not.toBe(before.sw);
-    expect(after.sh).not.toBe(before.sh);
-    expect(after.w).toBeGreaterThanOrEqual(MIN_WIN_W);
-    expect(after.h).toBeGreaterThanOrEqual(MIN_WIN_H);
+    // Direction: outward SE drag grows both axes.
+    expect(after.w).toBeGreaterThan(before.w);
+    expect(after.h).toBeGreaterThan(before.h);
   });
 
   test('resizing below MIN_WIN_SIZE clamps to the minimum', async ({ page }) => {
@@ -173,6 +173,91 @@ test.describe('Window drag, resize, z-index', () => {
     });
     expect(dims.w).toBe(MIN_WIN_W);
     expect(dims.h).toBe(MIN_WIN_H);
+  });
+
+  test('NW-corner drag inward shrinks the window and holds MIN_WIN_SIZE', async ({ page }) => {
+    const win = await openGuestbook(page);
+
+    // Start large and away from the top-left so the NW corner is hittable
+    // and there is room to shrink without hitting the MIN floor immediately.
+    await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      el.style.left = '200px';
+      el.style.top = '200px';
+      el.style.width = '500px';
+      el.style.height = '400px';
+    });
+    await page.waitForTimeout(100);
+
+    const before = await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      return { w: el.offsetWidth, h: el.offsetHeight };
+    });
+
+    const box = await win.boundingBox();
+    // NW corner needs a 2px inset (not EDGE_INSET=4): the top/left resize
+    // strip is only the .window's 3px padding — the .title-bar (which the
+    // resize handler excludes) begins ~4px in. The SE corner gets a wider
+    // frame from .window-body's 8px margin, so 4px is safe there.
+    const NW_INSET = 2;
+    const startX = box.x + NW_INSET;
+    const startY = box.y + NW_INSET;
+
+    // Drag the NW corner toward the center (down-right): shrinks both axes.
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 90, startY + 90, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+
+    const after = await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      return { w: el.offsetWidth, h: el.offsetHeight };
+    });
+
+    // Direction: inward NW drag shrinks both axes, but never below the floor.
+    expect(after.w).toBeLessThan(before.w);
+    expect(after.h).toBeLessThan(before.h);
+    expect(after.w).toBeGreaterThanOrEqual(MIN_WIN_W);
+    expect(after.h).toBeGreaterThanOrEqual(MIN_WIN_H);
+  });
+
+  test('E-edge drag changes width only, not height', async ({ page }) => {
+    const win = await openGuestbook(page);
+
+    await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      el.style.left = '100px';
+      el.style.top = '100px';
+      el.style.width = '400px';
+      el.style.height = '300px';
+    });
+    await page.waitForTimeout(100);
+
+    const before = await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      return { w: el.offsetWidth, h: el.offsetHeight };
+    });
+
+    const box = await win.boundingBox();
+    // Right edge, vertical middle → edge === 'e' (no N/S component).
+    const startX = box.x + box.width - EDGE_INSET;
+    const startY = box.y + box.height / 2;
+
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 120, startY, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+
+    const after = await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      return { w: el.offsetWidth, h: el.offsetHeight };
+    });
+
+    // Width grows in the drag direction; height is untouched by an E-only drag.
+    expect(after.w).toBeGreaterThan(before.w);
+    expect(after.h).toBe(before.h);
   });
 
   test('resizing an unfocused window brings it to the front', async ({ page }) => {
