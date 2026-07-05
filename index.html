@@ -430,6 +430,23 @@ Mitch</div>
     </div>
   </div>
 
+  <!-- Log Off Dialog -->
+  <div id="window-logoff" class="window" data-state="closed" role="dialog" aria-labelledby="title-logoff" tabindex="-1" style="width:340px;height:auto;min-height:auto;">
+    <div class="title-bar">
+      <div class="title-bar-text" id="title-logoff">Log Off Reebz</div>
+      <div class="title-bar-controls" role="toolbar" aria-label="Window controls">
+        <button aria-label="Close"></button>
+      </div>
+    </div>
+    <div class="window-body" role="document" style="padding:16px;background:var(--win98-silver);">
+      <div style="font-family:'Pixelated MS Sans Serif',Arial;font-size:11px;margin-bottom:12px;">Log off this imaginary computer? Every window you opened will politely close. (Relax — no real session ends, and Reebz will be right here when you get back.)</div>
+      <div style="text-align:right;margin-top:16px;">
+        <button id="logoff-ok" style="min-width:75px;">Yes</button>
+        <button data-close-window="window-logoff" style="min-width:75px;margin-left:4px;">No</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Start Menu (Win98 authentic with cascading submenus) -->
   <div id="start-menu" role="menu" aria-label="Start menu">
     <div class="start-menu-sidebar" aria-hidden="true">
@@ -513,6 +530,11 @@ Mitch</div>
       </button></li>
 
       <li class="start-menu-separator" role="separator"></li>
+
+      <li><button class="start-menu-item start-menu-item-lg" role="menuitem" data-action="logoff">
+        <span class="start-icon-32" aria-hidden="true" style="display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;">&#128273;</span>
+        <span class="start-item-label">Log Off Reebz...</span>
+      </button></li>
 
       <li><button class="start-menu-item start-menu-item-lg" role="menuitem" data-action="shutdown">
         <img src="img/icons/shutdown-32.png" alt="" class="start-icon-32">

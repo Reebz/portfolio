@@ -97,7 +97,7 @@
   ];
 
   // Non-project windows (hand-authored in HTML)
-  var SYSTEM_WINDOWS = ['about', 'guestbook', 'contact', 'my-computer', 'recycle-bin', 'visitor-counter', 'clock', 'shutdown'];
+  var SYSTEM_WINDOWS = ['about', 'guestbook', 'contact', 'my-computer', 'recycle-bin', 'visitor-counter', 'clock', 'shutdown', 'logoff'];
 
   // All valid window IDs (for hash routing whitelist)
   var VALID_WINDOWS = new Set();
@@ -247,6 +247,7 @@
   // funnels through openWindow, so keying the sound here covers them all.
   var DIALOG_SOUND_IDS = {
     'window-shutdown': 1,
+    'window-logoff': 1,
     'window-run-dialog': 1,
     'window-cavaro': 1
   };
@@ -1782,6 +1783,8 @@
         openWindow(windowId);
       } else if (action === 'shutdown') {
         openWindow('window-shutdown');
+      } else if (action === 'logoff') {
+        openWindow('window-logoff');
       } else if (app) {
         var launcher = getAppLaunchers()[app];
         if (launcher) launcher();
@@ -1805,6 +1808,10 @@
     // Shutdown OK button
     var shutdownOk = document.getElementById('shutdown-ok');
     if (shutdownOk) shutdownOk.addEventListener('click', handleShutdown);
+
+    // Log Off Yes button
+    var logoffOk = document.getElementById('logoff-ok');
+    if (logoffOk) logoffOk.addEventListener('click', handleLogOff);
 
     // Global click for start menu
     document.addEventListener('click', handleGlobalClick);
@@ -2702,6 +2709,29 @@
       safeRemove('localStorage', 'cavaro-dismissed');
       location.reload();
     }
+  }
+
+  // --- Log Off ---
+  // Fake log-off: no session state changes. Tears every window down through
+  // the real closeWindow path (clock stop, cleanups, taskbar chip removal) so
+  // nothing stale is left behind — unlike showDesktop/minimize-all, which keep
+  // the taskbar chips. The open logoff dialog is itself an open window, so this
+  // closes it too.
+  function handleLogOff() {
+    closeAllWindows();
+    elStartMenu.classList.remove('open');
+    elStartButton.setAttribute('aria-expanded', 'false');
+  }
+
+  // Close every non-closed window (open/maximized/minimized) via closeWindow so
+  // each gets its full teardown. IDs are snapshotted first because closeWindow
+  // deletes transient windows from the map mid-iteration.
+  function closeAllWindows() {
+    var ids = [];
+    windows.forEach(function(win, id) {
+      if (win.state !== 'closed') ids.push(id);
+    });
+    ids.forEach(function(id) { closeWindow(id); });
   }
 
   // --- Quick Launch: Show Desktop ---
