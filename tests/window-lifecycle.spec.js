@@ -510,3 +510,58 @@ test.describe('Relaunch and lifecycle regressions (review follow-ups)', () => {
     await expect(page.locator('#contact-message')).toHaveValue('Fresh draft');
   });
 });
+
+test.describe('U3 — Focus-state: inactive title bars everywhere', () => {
+  test.beforeEach(BOOTED);
+
+  // AE2: only the focused window wears the active (navy) title bar; every
+  // other open window's title bar carries .inactive (gray). 98.css ships both
+  // gradients — this locks the class-toggle so focus is truthful, and that a
+  // plain title-bar click swaps the states between two open windows.
+  test('focusing swaps active/inactive title bars between two open windows', async ({ page }) => {
+    await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => { window.location.hash = '#window-about'; });
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+
+    // About opened last → it is focused: navy (no .inactive). Guestbook is gray.
+    await expect(page.locator('#window-about .title-bar')).not.toHaveClass(/inactive/);
+    await expect(page.locator('#window-guestbook .title-bar')).toHaveClass(/inactive/);
+
+    // Click the back window's title bar (about may overlap it) → states swap.
+    await page.locator('#window-guestbook .title-bar').click({ force: true });
+    await page.waitForTimeout(100);
+    await expect(page.locator('#window-guestbook .title-bar')).not.toHaveClass(/inactive/);
+    await expect(page.locator('#window-about .title-bar')).toHaveClass(/inactive/);
+  });
+
+  // Close-then-focus-next: closing the focused window hands focus to the
+  // next window down the stack, and that window's title bar must turn active.
+  test('closing the focused window activates the newly-focused window title bar', async ({ page }) => {
+    await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => { window.location.hash = '#window-about'; });
+    await page.waitForTimeout(200);
+    // About is focused; guestbook is inactive underneath.
+    await expect(page.locator('#window-guestbook .title-bar')).toHaveClass(/inactive/);
+
+    await page.click('#window-about .title-bar [aria-label="Close"]');
+    await page.waitForTimeout(150);
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'closed');
+
+    // Guestbook is now the only/topmost window → its title bar becomes active.
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('#window-guestbook .title-bar')).not.toHaveClass(/inactive/);
+  });
+
+  // Initial-open path: the first (single) window a user opens is focused, so
+  // its title bar must render active — never stranded in the gray state.
+  test('a single open window has an active title bar', async ({ page }) => {
+    await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('#window-guestbook .title-bar')).not.toHaveClass(/inactive/);
+  });
+});
