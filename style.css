@@ -256,6 +256,12 @@ body {
 
 .taskbar-window-btn[aria-pressed="true"] {
   font-weight: bold;
+  /* 1px white/silver checkerboard: the active task's hatched dither over the
+     sunken bevel, the way Win98 marks the button belonging to the top window. */
+  background-image: repeating-conic-gradient(
+    var(--win98-white) 0% 25%,
+    var(--win98-silver) 0% 50%);
+  background-size: 2px 2px;
   box-shadow: inset -1px -1px var(--win98-white),
               inset 1px 1px var(--win98-dark),
               inset -2px -2px var(--win98-light),
@@ -268,9 +274,18 @@ body {
   gap: 6px;
   padding: 0 8px;
   height: 22px;
+  /* Sunken well: dark top/left + light bottom/right, the recessed notification
+     area of a real Win98 tray. */
+  box-shadow: inset 1px 1px var(--win98-grey),
+              inset -1px -1px var(--win98-white);
+  margin-left: auto;
+}
+
+/* Engraved groove between tray items (dark line + light highlight). */
+#system-tray > * + * {
+  padding-left: 6px;
   border-left: 1px solid var(--win98-grey);
   box-shadow: inset 1px 0 0 var(--win98-white);
-  margin-left: auto;
 }
 
 #visitor-counter,
