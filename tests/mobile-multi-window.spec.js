@@ -28,13 +28,22 @@ test.describe('Mobile multi-window', () => {
     await page.evaluate(() => { window.location.hash = '#window-cavaro'; });
     await page.waitForTimeout(200);
 
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // R9: About is in MAXIMIZE_DEFAULT (maximized on a portrait phone); Cavaro
+    // is a fixed-size dialog and opens floating. Both are still open at once —
+    // what this test proves.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
     await expect(page.locator('#window-cavaro')).toHaveAttribute('data-state', 'open');
   });
 
   test('F2: dragging About Me by its title bar moves the window', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#window-about'; });
     await page.waitForTimeout(200);
+    // R9: About opens maximized on a portrait phone, and maximized windows can't
+    // be dragged (onDragStart early-returns). Restore it to a floating window
+    // first — via the Maximize/restore control — then run the original drag
+    // proof on the floating window, exactly as before the maximize-by-default.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
+    await page.locator('#window-about [aria-label="Maximize"]').tap();
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
 
     const titleBar = page.locator('#window-about .title-bar');
@@ -55,6 +64,12 @@ test.describe('Mobile multi-window', () => {
   test('AE4: a window dragged off the right edge recovers via its taskbar chip', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#window-about'; });
     await page.waitForTimeout(200);
+    // R9: About opens maximized on a portrait phone, and a maximized window is
+    // pinned flush by CSS (left/top:0 !important) so a direct style.left write
+    // can't shove it off-screen. Restore it to a floating window first, then
+    // run the original off-screen → minimize → chip-restore recovery chain.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
+    await page.locator('#window-about [aria-label="Maximize"]').tap();
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
 
     // Shove About Me hard to the right so most of it sits off-screen. We

@@ -82,7 +82,11 @@ test.describe('Mobile — taskbar layout', () => {
 
   test('R6: with 1 window open, chip fits and all taskbar children sit within the taskbar', async ({ page }) => {
     await openWindowsViaHash(page, ['#window-about']);
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // R9: About opens maximized on a portrait phone. The taskbar-layout proof
+    // (one chip present, all taskbar children inside the taskbar box) is about
+    // the chip, not the window's own geometry — a maximized window still owns
+    // exactly one taskbar chip.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
 
     const chipCount = await page.locator('#taskbar-buttons .taskbar-window-btn').count();
     expect(chipCount).toBe(1);

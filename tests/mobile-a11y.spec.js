@@ -51,7 +51,10 @@ test.describe('Mobile a11y', () => {
   test('AE10: window controls have accessible names', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
     await page.waitForTimeout(200);
-    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    // R9: Guestbook is in MAXIMIZE_DEFAULT, so on a portrait phone it opens
+    // maximized rather than floating. The control-name check below is
+    // state-agnostic — a maximized window keeps its full title-bar controls.
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'maximized');
 
     // Guestbook has Minimize / Maximize / Close controls (index.html:82-84).
     // Scope to the guestbook window — other windows have their own controls.

@@ -71,6 +71,9 @@ test.describe('Mobile icon grid', () => {
     await expect(aboutIcon).toBeVisible();
     await aboutIcon.tap();
     await page.waitForTimeout(300);
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // R9: About is in MAXIMIZE_DEFAULT — on a portrait phone the tap launches
+    // it maximized. The proof here is "the tap launched the window", which a
+    // maximized data-state satisfies just as well as a floating one.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
   });
 });
