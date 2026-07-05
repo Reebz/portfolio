@@ -13,7 +13,7 @@
   // user can always grab the title bar back from the viewport edges.
   var DRAG_EDGE_MARGIN_X = 100; // px kept visible on the right edge
   var DRAG_EDGE_MARGIN_Y = 30;  // px kept visible above the taskbar
-  // U6: minimize/restore zoom-rectangle animation. Duration matches the
+  // Minimize/restore zoom-rectangle animation. Duration matches the
   // Start-menu submenu slide (style.css transform 0.18s ease-out). The
   // transitionend fallback fires a touch later so a dropped event can't
   // wedge the window in a half-transformed state.
@@ -123,6 +123,20 @@
   // document-level keydown/click handlers and re-running module-side init.
   var appScriptLoaded = new Set();
 
+  // Load a per-app <script> once per page, then run its init on every launch.
+  // runInit is the caller's closure (internally idempotent) so repeat opens
+  // start fresh without re-fetching. onerror unmarks the key so a failed fetch
+  // can be retried on the next launch.
+  function loadAppScriptOnce(key, src, runInit) {
+    if (appScriptLoaded.has(key)) { runInit(); return; }
+    var script = document.createElement('script');
+    script.src = src;
+    script.onload = runInit;
+    script.onerror = function() { appScriptLoaded.delete(key); script.remove(); };
+    document.head.appendChild(script);
+    appScriptLoaded.add(key);
+  }
+
   // Per-window cleanup registry. Used by launchers that schedule timers,
   // intervals, or RAF outside the window DOM (e.g. Matrix terminal's chained
   // setTimeouts). closeWindow runs the registered fns before tearing down,
@@ -175,6 +189,14 @@
   function getTaskbarHeight() {
     var el = document.getElementById('taskbar');
     return el ? el.getBoundingClientRect().height : TASKBAR_HEIGHT;
+  }
+
+  // Taskbar height in pre-zoom CSS units, for geometry math that mixes with
+  // style writes on tablets (body { zoom }). Only the measured height is
+  // zoom-divided; the no-taskbar fallback is already a CSS-unit constant.
+  function getTaskbarHeightCss(z) {
+    var el = document.getElementById('taskbar');
+    return el ? (el.getBoundingClientRect().height / z) : TASKBAR_HEIGHT;
   }
 
   // Token bumped on every contact-form submit AND on every contact-window
@@ -252,7 +274,7 @@
     'window-cavaro': 1
   };
 
-  // R9: On portrait phones these resizable app windows open maximized (filling
+  // On portrait phones these resizable app windows open maximized (filling
   // the screen above the taskbar) instead of cascading — a floating 520px
   // window is unusable at 390px wide. Small fixed-size dialogs (calculator,
   // minesweeper, run, icq, clock, visitor-counter, cavaro, shutdown, logoff)
@@ -300,7 +322,7 @@
     win.state = 'open';
     win.el.setAttribute('data-state', 'open');
 
-    // R9: Portrait-phone open behavior. Resizable app windows enter the REAL
+    // Portrait-phone open behavior. Resizable app windows enter the REAL
     // maximized state (same data-state + prevRect snapshot toggleMaximize
     // sets) so every downstream path — taskbar button, rotation prevRect
     // rewrite, restore clamp — treats them like any maximized window. Seed
@@ -418,7 +440,7 @@
     }
   }
 
-  // U6: honor the OS "reduce motion" setting. Wrapped because matchMedia can
+  // Honor the OS "reduce motion" setting. Wrapped because matchMedia can
   // be absent/throwing in exotic embeddings; a missing signal means animate.
   function prefersReducedMotion() {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
@@ -440,7 +462,7 @@
     };
   }
 
-  // U6: run a one-shot transform+opacity transition on win.el from
+  // Run a one-shot transform+opacity transition on win.el from
   // (startTransform/startOpacity) to (endTransform/endOpacity), then clear the
   // inline transition/transform/opacity and call onDone. Completion is
   // idempotent via win.animFinish: a transitionend, the fallback timer, or a
@@ -1319,7 +1341,7 @@
     }
   }
 
-  // --- Win98 Hover Tooltips (R4) ---
+  // --- Win98 Hover Tooltips ---
   // One reusable #win98-tooltip element, positioned + filled on hover. Bound
   // only when the pointer can actually hover (desktop); phones report
   // (hover: none) so nothing binds and no tooltip can ever show. Native title
@@ -2016,7 +2038,7 @@
     return window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches;
   }
 
-  // R9: Portrait phones only — touch input AND a narrow (<480px) viewport.
+  // Portrait phones only — touch input AND a narrow (<480px) viewport.
   // Deliberately tighter than isMobile() (max-width 767): landscape phones
   // (480-767px) fall outside it and keep the floating-cascade behavior
   // untouched, so maximize-by-default never fires on a wide phone.
@@ -2024,7 +2046,7 @@
     return window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 479px)').matches;
   }
 
-  // R9: Center a fixed-size dialog in the viewport. Portrait phones are too
+  // Center a fixed-size dialog in the viewport. Portrait phones are too
   // narrow for the cascade offset (a 340px dialog at left:30 runs off the
   // right edge), so dialogs that opt out of maximize-by-default open centered,
   // matching how Win98 centers its dialogs. Same pre-zoom/post-zoom unit
@@ -2042,10 +2064,7 @@
     var marginT = parseFloat(cs.marginTop) || 0;
     var vw = window.innerWidth / z;
     var vh = window.innerHeight / z;
-    var taskbarEl = document.getElementById('taskbar');
-    var taskbarH = taskbarEl
-      ? (taskbarEl.getBoundingClientRect().height / z)
-      : TASKBAR_HEIGHT;
+    var taskbarH = getTaskbarHeightCss(z);
     winEl.style.left = Math.max(4, (vw - rect.width / z) / 2 - marginL) + 'px';
     winEl.style.top = Math.max(4, (vh - taskbarH - rect.height / z) / 2 - marginT) + 'px';
   }
@@ -2069,10 +2088,7 @@
     var rectH = rect.height / z;
     var vw = window.innerWidth / z;
     var vh = window.innerHeight / z;
-    var taskbarEl = document.getElementById('taskbar');
-    var taskbarH = taskbarEl
-      ? (taskbarEl.getBoundingClientRect().height / z)
-      : TASKBAR_HEIGHT;
+    var taskbarH = getTaskbarHeightCss(z);
     var pad = 4;
     var maxLeft = Math.max(pad, vw - rectW - pad);
     var maxTop = Math.max(pad, vh - taskbarH - rectH - pad);
@@ -2896,16 +2912,7 @@
     // is internally idempotent (wires handlers on first call only) and
     // always starts a fresh game.
     function runInit() { if (window.__initMinesweeper) window.__initMinesweeper(); }
-    if (!appScriptLoaded.has('minesweeper')) {
-      var script = document.createElement('script');
-      script.src = 'apps/minesweeper/game.js';
-      script.onload = runInit;
-      script.onerror = function() { appScriptLoaded.delete('minesweeper'); script.remove(); };
-      document.head.appendChild(script);
-      appScriptLoaded.add('minesweeper');
-    } else {
-      runInit();
-    }
+    loadAppScriptOnce('minesweeper', 'apps/minesweeper/game.js', runInit);
   }
 
   // Lazy-load apps/help/book.js on first launch. The file is ~63KB of static
@@ -3034,16 +3041,7 @@
     // fresh global keydown handler on every launch, so after N opens a
     // single keystroke fired N button clicks.
     function runInit() { if (window.__initCalculator) window.__initCalculator(); }
-    if (!appScriptLoaded.has('calculator')) {
-      var script = document.createElement('script');
-      script.src = 'apps/calculator/calc.js';
-      script.onload = runInit;
-      script.onerror = function() { appScriptLoaded.delete('calculator'); script.remove(); };
-      document.head.appendChild(script);
-      appScriptLoaded.add('calculator');
-    } else {
-      runInit();
-    }
+    loadAppScriptOnce('calculator', 'apps/calculator/calc.js', runInit);
   }
 
   function launchNotepad() {
@@ -3151,16 +3149,7 @@
       if (window.__initNapster) window.__initNapster();
     }
 
-    if (!appScriptLoaded.has('napster')) {
-      var script = document.createElement('script');
-      script.src = 'apps/napster/napster.js';
-      script.onload = runInit;
-      script.onerror = function() { appScriptLoaded.delete('napster'); script.remove(); };
-      document.head.appendChild(script);
-      appScriptLoaded.add('napster');
-    } else {
-      runInit();
-    }
+    loadAppScriptOnce('napster', 'apps/napster/napster.js', runInit);
   }
 
   function launchMatrixTerminal() {

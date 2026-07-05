@@ -52,43 +52,44 @@
     osc.stop(start + dur + 0.02);
   }
 
+  // Shared guard for every sound: no-op when muted or no context is available,
+  // and never let an audio failure throw into the page. Each caller schedules
+  // its own notes against the live context.
+  function play(schedule) {
+    if (!enabled) return;
+    var c = getCtx();
+    if (!c) return;
+    try { schedule(c); } catch (e) { /* never let audio break the page */ }
+  }
+
   // Warm two-note rising chime (~1s): A4 then a perfect-fifth-up E5, low gain,
   // soft envelopes. Synthesized conservatively — no attempt to mimic the real
   // Win98 startup sound. Plays at boot completion on the first user gesture.
   function playStartup() {
-    if (!enabled) return;
-    var c = getCtx();
-    if (!c) return;
-    try {
+    play(function(c) {
       var t = c.currentTime + 0.02;
       note(c, 440, t, 0.5, 0.13, 'sine');
       note(c, 659.25, t + 0.26, 0.7, 0.13, 'sine');
-    } catch (e) { /* never let audio break the page */ }
+    });
   }
 
   // Short single tone with fast decay — the dialog "ding".
   function playError() {
-    if (!enabled) return;
-    var c = getCtx();
-    if (!c) return;
-    try {
+    play(function(c) {
       var t = c.currentTime + 0.01;
       note(c, 494, t, 0.22, 0.15, 'triangle');
-    } catch (e) {}
+    });
   }
 
   // Brief descending pair — the recycle-bin "empty" gesture. Exposed to keep
   // the sound API complete, but left unwired: this build has no empty-bin
   // interaction to trigger it (the Recycle Bin window is view-only).
   function playRecycle() {
-    if (!enabled) return;
-    var c = getCtx();
-    if (!c) return;
-    try {
+    play(function(c) {
       var t = c.currentTime + 0.01;
       note(c, 520, t, 0.18, 0.12, 'triangle');
       note(c, 340, t + 0.10, 0.22, 0.12, 'triangle');
-    } catch (e) {}
+    });
   }
 
   function setSoundEnabled(v) { enabled = !!v; }
