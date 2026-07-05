@@ -120,14 +120,24 @@ test.describe('Mobile screenshot baselines (U6)', () => {
       window.location.hash = '#window-about';
     });
     await page.waitForTimeout(250);
-    await page.evaluate(() => {
-      window.location.hash = '#window-cavaro';
-    });
-    await page.waitForTimeout(300);
+    // About opens maximized on portrait phones (R9) and the maximized state
+    // pins left/top with !important, which would defeat the deterministic
+    // style writes below — restore it to a floating window first, before
+    // Cavaro opens centered on top and intercepts the tap. Cavaro is a
+    // fixed-size dialog and opens floating.
+    await expect(page.locator('#window-about')).toHaveAttribute(
+      'data-state',
+      'maximized'
+    );
+    await page.locator('#window-about [aria-label="Maximize"]').tap();
     await expect(page.locator('#window-about')).toHaveAttribute(
       'data-state',
       'open'
     );
+    await page.evaluate(() => {
+      window.location.hash = '#window-cavaro';
+    });
+    await page.waitForTimeout(300);
     await expect(page.locator('#window-cavaro')).toHaveAttribute(
       'data-state',
       'open'
