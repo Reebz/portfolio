@@ -76,4 +76,23 @@ test.describe('Mobile icon grid', () => {
     // maximized data-state satisfies just as well as a floating one.
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
   });
+
+  // Icon drag-to-rearrange is a desktop-only affordance. On phones .desktop-icon
+  // is position:relative (for the selection tint), so a drag's inline left/top
+  // would offset the icon off its grid cell and never reset. A tap that drifts
+  // >5px (common on real fingers) must not strand the icon: the drag never
+  // starts on mobile, so no inline left/top is written.
+  test('a tap that drifts past the drag threshold does not strand a desktop icon', async ({ page }) => {
+    const icon = page.locator('.desktop-icon').first();
+    const box = await icon.boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 25, cy + 25, { steps: 6 }); // drift well past the 5px threshold
+    await page.mouse.up();
+    const inline = await icon.evaluate((el) => ({ left: el.style.left, top: el.style.top }));
+    expect(inline.left).toBe('');
+    expect(inline.top).toBe('');
+  });
 });

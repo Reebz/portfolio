@@ -373,6 +373,12 @@
     var win = windows.get(id);
     if (!win || win.state === 'closed') return;
 
+    // Snap any in-flight minimize/restore animation to its end before teardown,
+    // matching minimizeWindow/restoreWindow. Otherwise the pending finalize
+    // (fallback timer or transitionend) fires ~250ms later and resurrects the
+    // just-closed window into a phantom 'minimized' state with no taskbar chip.
+    if (win.animFinish) win.animFinish();
+
     // Cavaro self-destruct: save dismissal and remove icon
     if (id === 'window-cavaro') {
       safeSet('cavaro-dismissed', Date.now());
@@ -608,6 +614,11 @@
   function toggleMaximize(id) {
     var win = windows.get(id);
     if (!win) return;
+
+    // Snap any in-flight minimize/restore animation to its end before mutating
+    // state, so a maximize toggle during the fly-to-taskbar transition can't be
+    // overwritten by the pending finalize (same guard as minimize/restore).
+    if (win.animFinish) win.animFinish();
 
     if (win.state === 'maximized') {
       // Restore
@@ -1553,6 +1564,12 @@
 
   function setupIconDrag() {
     elIconGrid.addEventListener('pointerdown', function(e) {
+      // Drag-to-rearrange is a desktop (mouse) affordance only. On phones icons
+      // are laid out by CSS grid (layoutIcons/saveIconPositions already no-op),
+      // and .desktop-icon is position:relative for the selection tint — so a
+      // drag's inline left/top would strand the icon off its cell on a >5px
+      // tap-drift. Never start an icon drag on mobile.
+      if (isMobile()) return;
       var icon = e.target.closest('.desktop-icon');
       if (!icon) return;
 

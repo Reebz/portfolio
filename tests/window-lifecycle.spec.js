@@ -645,4 +645,26 @@ test.describe('U6 — Minimize/restore taskbar zoom-rectangle animation', () => 
     expect(res.transform).toBe('');
     expect(res.state).toBe('minimized');
   });
+
+  // Closing a window while its minimize animation is still in flight must not
+  // let the pending finalize (fallback timer) resurrect it into a phantom
+  // 'minimized' state after it is already closed. closeWindow snaps the
+  // animation to its end first; without that guard the window ends 'minimized'
+  // ~250ms after close, with no taskbar chip. Escape closes the active window.
+  test('closing mid-minimize-animation does not resurrect a phantom minimized window', async ({ page }) => {
+    await openGuestbook(page);
+    await page.click(MIN_BTN);        // minimize animation + finalize timer pending
+    await page.waitForTimeout(40);    // land inside the animation window
+    await page.keyboard.press('Escape'); // closeWindow(activeWindowId) mid-flight
+    await page.waitForTimeout(400);   // past WINDOW_ANIM_FALLBACK_MS (250ms)
+    const res = await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      return {
+        state: el.getAttribute('data-state'),
+        chip: !!document.querySelector('#taskbar-buttons [data-window-id="window-guestbook"]'),
+      };
+    });
+    expect(res.state).toBe('closed'); // not flipped back to 'minimized'
+    expect(res.chip).toBe(false);     // no phantom taskbar chip
+  });
 });
