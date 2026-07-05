@@ -154,6 +154,24 @@ body {
   text-shadow: none;
 }
 
+/* Classic Win98 selection tint: a translucent navy wash over the icon art
+   (Win98 dithered the bitmap with the highlight colour at ~50%). The overlay
+   is clipped to the icon image box — top offset = cell padding, centred
+   horizontally — and sits above the img in paint order. pointer-events:none
+   so it never intercepts the icon click. Additive to the dotted outline. */
+.desktop-icon[data-selected="true"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--icon-size);
+  height: var(--icon-size);
+  background: var(--win98-navy);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .desktop-icon:focus-visible {
   outline: 1px dotted var(--win98-white);
   outline-offset: -1px;
@@ -611,7 +629,9 @@ body {
     overflow: hidden;
   }
   .desktop-icon {
-    position: static;
+    /* relative (not static) so the selection-tint ::after has a containing
+       block; keeps the grid item in flow, no offset. */
+    position: relative;
     width: auto;
     min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
     min-height: 64px;
@@ -627,12 +647,20 @@ body {
     width: 28px;
     height: 28px;
   }
+  /* Selection tint tracks the scaled-down mobile art (28px, not --icon-size). */
+  .desktop-icon[data-selected="true"]::after {
+    width: 28px;
+    height: 28px;
+  }
   .desktop-icon-label {
     text-align: center;
     -webkit-line-clamp: 2;
     font-size: 11px;
     line-height: 1.2;
     max-width: 100%;
+    /* Reserve a fixed 2-line block so 1-line vs 2-line labels don't give
+       rows uneven vertical rhythm (2 lines × 1.2 line-height = 2.4em). */
+    min-height: 2.4em;
   }
 
   /* U3: taskbar — ≥44px hit targets per WCAG 2.5.5. Chip container
@@ -917,7 +945,9 @@ body {
     overflow: hidden;
   }
   .desktop-icon {
-    position: static;
+    /* relative (not static) so the selection-tint ::after has a containing
+       block; keeps the grid item in flow, no offset. */
+    position: relative;
     width: auto;
     min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
     min-height: 64px;
@@ -933,12 +963,20 @@ body {
     width: 28px;
     height: 28px;
   }
+  /* Selection tint tracks the scaled-down mobile art (28px, not --icon-size). */
+  .desktop-icon[data-selected="true"]::after {
+    width: 28px;
+    height: 28px;
+  }
   .desktop-icon-label {
     text-align: center;
     -webkit-line-clamp: 2;
     font-size: 11px;
     line-height: 1.2;
     max-width: 100%;
+    /* Reserve a fixed 2-line block so 1-line vs 2-line labels don't give
+       rows uneven vertical rhythm (2 lines × 1.2 line-height = 2.4em). */
+    min-height: 2.4em;
   }
 
   /* U3: taskbar — same 44px floor as portrait. */
