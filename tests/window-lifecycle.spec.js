@@ -565,3 +565,84 @@ test.describe('U3 — Focus-state: inactive title bars everywhere', () => {
     await expect(page.locator('#window-guestbook .title-bar')).not.toHaveClass(/inactive/);
   });
 });
+
+test.describe('U6 — Minimize/restore taskbar zoom-rectangle animation', () => {
+  test.beforeEach(BOOTED);
+
+  async function openGuestbook(page) {
+    const icon = page.locator('[data-window-id="window-guestbook"]');
+    await icon.dblclick();
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+  }
+
+  const MIN_BTN = '#window-guestbook .title-bar [aria-label="Minimize"]';
+  const CHIP = '#taskbar-buttons [data-window-id="window-guestbook"]';
+
+  // AE3: a minimize always reaches the terminal state (minimized + display:none)
+  // well within 500ms — the zoom-rectangle animation must never leave the
+  // window stranded on-screen.
+  test('minimize reaches minimized + display:none within 500ms', async ({ page }) => {
+    await openGuestbook(page);
+    await page.click(MIN_BTN);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'minimized', { timeout: 500 });
+    const display = await page.evaluate(() =>
+      getComputedStyle(document.getElementById('window-guestbook')).display
+    );
+    expect(display).toBe('none');
+  });
+
+  // R3: without reduced motion, minimize animates — a transform (translate +
+  // scale toward the taskbar) is applied to the window element mid-flight,
+  // before it is hidden. This is the new behavior; it is red pre-change.
+  test('minimize applies a transform toward the taskbar when motion is allowed', async ({ page }) => {
+    await openGuestbook(page);
+    await page.click(MIN_BTN);
+    const sawTransform = await page
+      .waitForFunction(() => {
+        const el = document.getElementById('window-guestbook');
+        return !!el.style.transform && el.style.transform.indexOf('scale') !== -1;
+      }, null, { timeout: 1000, polling: 10 })
+      .then(() => true)
+      .catch(() => false);
+    expect(sawTransform).toBe(true);
+  });
+
+  // AE3: prefers-reduced-motion disables the animation — the window disappears
+  // instantly with no inline transform ever applied.
+  test('reduced motion minimizes instantly with no transform', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openGuestbook(page);
+    await page.click(MIN_BTN);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'minimized');
+    const snap = await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      return { transform: el.style.transform, display: getComputedStyle(el).display };
+    });
+    expect(snap.transform).toBe('');
+    expect(snap.display).toBe('none');
+  });
+
+  // Guards the double-fire path: minimize → restore → minimize in rapid
+  // succession (each click landing mid-animation) must not strand the window
+  // in a transformed state once the dust settles.
+  test('rapid minimize/restore/minimize leaves no residual transform', async ({ page }) => {
+    await openGuestbook(page);
+    // 50ms gaps land each interaction inside the previous ~180ms animation,
+    // forcing the in-flight animation to complete before the next begins.
+    await page.click(MIN_BTN);            // minimize (anim out)
+    await page.waitForTimeout(50);
+    await page.click(CHIP);               // active+open → re-minimize completes it
+    await page.waitForTimeout(50);
+    await page.click(CHIP);               // minimized → restore (anim in)
+    await page.waitForTimeout(50);
+    await page.click(CHIP);               // active+open → minimize (anim out)
+    await page.waitForTimeout(500);       // let the final animation settle
+    const res = await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      return { transform: el.style.transform, state: el.getAttribute('data-state') };
+    });
+    expect(res.transform).toBe('');
+    expect(res.state).toBe('minimized');
+  });
+});

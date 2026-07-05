@@ -13,6 +13,12 @@
   // user can always grab the title bar back from the viewport edges.
   var DRAG_EDGE_MARGIN_X = 100; // px kept visible on the right edge
   var DRAG_EDGE_MARGIN_Y = 30;  // px kept visible above the taskbar
+  // U6: minimize/restore zoom-rectangle animation. Duration matches the
+  // Start-menu submenu slide (style.css transform 0.18s ease-out). The
+  // transitionend fallback fires a touch later so a dropped event can't
+  // wedge the window in a half-transformed state.
+  var WINDOW_ANIM_MS = 180;
+  var WINDOW_ANIM_FALLBACK_MS = 250;
 
   // --- Project Data ---
   var PROJECTS = [
@@ -361,9 +367,76 @@
     }
   }
 
+  // U6: honor the OS "reduce motion" setting. Wrapped because matchMedia can
+  // be absent/throwing in exotic embeddings; a missing signal means animate.
+  function prefersReducedMotion() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+  }
+
+  // Translate (in unzoomed CSS px) that moves the window's center onto the
+  // taskbar button's center. getBoundingClientRect returns zoom-scaled device
+  // px for both elements, so their delta is device px; dividing by the body
+  // zoom converts it to the element-local units a CSS transform expects (the
+  // transform is re-scaled by the same zoom when painted, landing on target).
+  function taskbarVector(winEl, targetEl) {
+    var z = getZoom();
+    var wr = winEl.getBoundingClientRect();
+    var br = targetEl.getBoundingClientRect();
+    return {
+      x: ((br.left + br.width / 2) - (wr.left + wr.width / 2)) / z,
+      y: ((br.top + br.height / 2) - (wr.top + wr.height / 2)) / z
+    };
+  }
+
+  // U6: run a one-shot transform+opacity transition on win.el from
+  // (startTransform/startOpacity) to (endTransform/endOpacity), then clear the
+  // inline transition/transform/opacity and call onDone. Completion is
+  // idempotent via win.animFinish: a transitionend, the fallback timer, or a
+  // double-fire from the next minimize/restore all snap it to the end exactly
+  // once, so the window can never wedge in a half-transformed state.
+  function animateWindowTransform(win, startTransform, startOpacity, endTransform, endOpacity, onDone) {
+    var el = win.el;
+    var finished = false;
+    var fallback = null;
+    function onEnd(e) {
+      if (e.target === el && e.propertyName === 'transform') finish();
+    }
+    function finish() {
+      if (finished) return;
+      finished = true;
+      if (fallback) { clearTimeout(fallback); fallback = null; }
+      el.removeEventListener('transitionend', onEnd);
+      win.animFinish = null;
+      el.style.transition = '';
+      el.style.transform = '';
+      el.style.opacity = '';
+      if (onDone) onDone();
+    }
+    win.animFinish = finish;
+
+    // Commit the start state with no transition, force a reflow so it becomes
+    // the transition origin, then flip to the end state under the transition.
+    el.style.transition = 'none';
+    el.style.transform = startTransform;
+    el.style.opacity = startOpacity;
+    void el.offsetWidth; // reflow: lock in the start state
+    el.addEventListener('transitionend', onEnd);
+    el.style.transition = 'transform ' + WINDOW_ANIM_MS + 'ms ease-out, opacity ' + WINDOW_ANIM_MS + 'ms ease-out';
+    el.style.transform = endTransform;
+    el.style.opacity = endOpacity;
+    fallback = setTimeout(finish, WINDOW_ANIM_FALLBACK_MS);
+  }
+
   function minimizeWindow(id) {
     var win = windows.get(id);
-    if (!win || win.state !== 'open' && win.state !== 'maximized') return;
+    if (!win) return;
+
+    // Double-fire guard: snap any in-flight minimize/restore animation to its
+    // end before starting, so overlapping calls can't strand the transform.
+    if (win.animFinish) win.animFinish();
+
+    if (win.state !== 'open' && win.state !== 'maximized') return;
 
     // Remember whether we were maximized so restore-from-minimize can
     // reapply maximize state instead of stranding the window at its
@@ -378,29 +451,47 @@
       win.prevRect = getWindowRect(win.el);
     }
 
-    win.state = 'minimized';
-    win.el.setAttribute('data-state', 'minimized');
-    win.el.style.display = 'none';
+    // Terminal state + bookkeeping. Runs now (instant path) or on animation
+    // completion. Flipping data-state to 'minimized' also hides the element
+    // (the base .window { display:none } rule), which is why it can't happen
+    // until the zoom-rectangle animation is done.
+    var finalize = function() {
+      win.state = 'minimized';
+      win.el.setAttribute('data-state', 'minimized');
+      win.el.style.display = 'none';
+      if (win.taskbarBtn) {
+        win.taskbarBtn.setAttribute('aria-pressed', 'false');
+      }
+      if (activeWindowId === id) {
+        activeWindowId = null;
+        focusNextWindow();
+      }
+      var minHook = windowMinimizeHooks[id];
+      if (minHook) minHook();
+      announce(getTitleText(win.el) + ' minimized');
+    };
 
-    // Update taskbar button
-    if (win.taskbarBtn) {
-      win.taskbarBtn.setAttribute('aria-pressed', 'false');
+    // Skip the animation (minimize instantly) when motion is reduced, there is
+    // no taskbar button to fly toward, or the window is maximized — a maximized
+    // window carries transform:none !important, which would swallow the inline
+    // transform anyway, so it disappears instantly by design.
+    if (win.state === 'maximized' || !win.taskbarBtn || prefersReducedMotion()) {
+      finalize();
+      return;
     }
 
-    if (activeWindowId === id) {
-      activeWindowId = null;
-      focusNextWindow();
-    }
-
-    var minHook = windowMinimizeHooks[id];
-    if (minHook) minHook();
-
-    announce(getTitleText(win.el) + ' minimized');
+    var v = taskbarVector(win.el, win.taskbarBtn);
+    var end = 'translate(' + v.x + 'px, ' + v.y + 'px) scale(0.05)';
+    animateWindowTransform(win, 'translate(0px, 0px) scale(1)', '1', end, '0', finalize);
   }
 
   function restoreWindow(id) {
     var win = windows.get(id);
     if (!win) return;
+
+    // Double-fire guard: snap any in-flight minimize/restore animation to its
+    // end before starting so overlapping calls can't strand the transform.
+    if (win.animFinish) win.animFinish();
 
     if (win.state === 'minimized') {
       win.el.style.display = '';
@@ -429,6 +520,15 @@
       if (resHook) resHook();
 
       announce(getTitleText(win.el) + ' restored');
+
+      // Reverse of minimize: grow the window out from the taskbar button.
+      // Same skip conditions — reduced motion, no button, or maximized (its
+      // transform:none !important would suppress the inline transform).
+      if (win.state !== 'maximized' && win.taskbarBtn && !prefersReducedMotion()) {
+        var v = taskbarVector(win.el, win.taskbarBtn);
+        var start = 'translate(' + v.x + 'px, ' + v.y + 'px) scale(0.05)';
+        animateWindowTransform(win, start, '0', 'translate(0px, 0px) scale(1)', '1', null);
+      }
     }
   }
 
