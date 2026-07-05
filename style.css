@@ -1261,6 +1261,27 @@ body {
   box-shadow: 0 1px 0 var(--win98-white);
 }
 
+/* === Win98 Tooltip (desktop hover affordance) === */
+#win98-tooltip {
+  position: fixed;
+  z-index: 9700;
+  display: none;
+  max-width: 320px;
+  padding: 1px 4px;
+  background: #ffffe1;
+  border: 1px solid var(--win98-black);
+  color: var(--win98-black);
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#win98-tooltip.visible {
+  display: block;
+}
+
 /* === Selection Rectangle === */
 #selection-rect {
   position: absolute;

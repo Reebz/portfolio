@@ -1004,6 +1004,15 @@
     return h + ':' + m + ' ' + ampm;
   }
 
+  // Full weekday date (en-AU long date). Single source shared by the
+  // Date/Time window's date readout and the tray-clock hover tooltip so
+  // both render identically.
+  function formatSydneyFullDate(date) {
+    return date.toLocaleDateString('en-AU', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    });
+  }
+
   function startClock() {
     function tick() {
       if (!elClock) return;
@@ -1113,7 +1122,7 @@
 
       // Update digital readout
       if (digitalEl) digitalEl.textContent = formatTime12h(syd) + ':' + (secs < 10 ? '0' : '') + secs;
-      if (dateEl) dateEl.textContent = syd.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      if (dateEl) dateEl.textContent = formatSydneyFullDate(syd);
       if (tzOffsetEl) {
         var isDST = syd.toLocaleString('en-US', { timeZone: TIMEZONE, timeZoneName: 'short' }).includes('DT');
         tzOffsetEl.textContent = isDST ? 'AEDT (UTC+11:00)' : 'AEST (UTC+10:00)';
@@ -1257,6 +1266,93 @@
         }
       });
     }
+  }
+
+  // --- Win98 Hover Tooltips (R4) ---
+  // One reusable #win98-tooltip element, positioned + filled on hover. Bound
+  // only when the pointer can actually hover (desktop); phones report
+  // (hover: none) so nothing binds and no tooltip can ever show. Native title
+  // attributes are avoided because they can't be styled to match Win98.
+  var TOOLTIP_DELAY = 500;
+
+  function setupTooltips() {
+    var tooltipEl = document.getElementById('win98-tooltip');
+    if (!tooltipEl) return;
+    if (!(window.matchMedia && window.matchMedia('(hover: hover)').matches)) return;
+
+    var showTimer = null;
+    var currentTarget = null;
+
+    function positionAndShow(targetEl, text) {
+      var z = getZoom();
+      tooltipEl.textContent = text;
+      tooltipEl.classList.add('visible');
+      // Measure after making visible; getBoundingClientRect returns viewport
+      // (post-zoom) coordinates in the same space as clientX / innerWidth.
+      var tRect = tooltipEl.getBoundingClientRect();
+      var aRect = targetEl.getBoundingClientRect();
+      var gap = 2;
+      var x = aRect.left;
+      var y = aRect.bottom + gap;
+      // Flip above the target when it would overflow the bottom edge (the tray
+      // clock and quick-launch live in the taskbar at the bottom).
+      if (y + tRect.height > window.innerHeight) y = aRect.top - tRect.height - gap;
+      if (x + tRect.width > window.innerWidth) x = window.innerWidth - tRect.width - gap;
+      if (x < 0) x = gap;
+      if (y < 0) y = gap;
+      // CSS position lives in the pre-zoom coordinate space, so divide by zoom
+      // (same convention as showContextMenu).
+      tooltipEl.style.left = (x / z) + 'px';
+      tooltipEl.style.top = (y / z) + 'px';
+    }
+
+    function scheduleTooltip(targetEl, text) {
+      clearTimeout(showTimer);
+      showTimer = setTimeout(function() { positionAndShow(targetEl, text); }, TOOLTIP_DELAY);
+    }
+
+    function cancelTooltip() {
+      clearTimeout(showTimer);
+      tooltipEl.classList.remove('visible');
+      currentTarget = null;
+    }
+
+    // Resolve a hovered node to its tooltip host + text, or null.
+    function tooltipSourceFor(el) {
+      if (!el || !el.closest) return null;
+      var clock = el.closest('#clock');
+      if (clock) return { el: clock, text: formatSydneyFullDate(getSydneyTime()) };
+      var ql = el.closest('.quick-launch-btn');
+      if (ql) {
+        var img = ql.querySelector('img');
+        return { el: ql, text: (img && img.getAttribute('alt')) || '' };
+      }
+      var ctrl = el.closest('.title-bar-controls button');
+      if (ctrl) return { el: ctrl, text: ctrl.getAttribute('aria-label') || '' };
+      return null;
+    }
+
+    // Delegated over the whole document so per-window title-bar controls are
+    // covered without per-window wiring. pointerover/out bubble (unlike
+    // pointerenter/leave), so closest() dedupes moves within a target.
+    document.addEventListener('pointerover', function(e) {
+      var src = tooltipSourceFor(e.target);
+      if (!src || !src.text) return;
+      if (currentTarget === src.el) return;
+      currentTarget = src.el;
+      scheduleTooltip(src.el, src.text);
+    });
+
+    document.addEventListener('pointerout', function(e) {
+      if (!currentTarget) return;
+      // Ignore moves that stay inside the current target (e.g. button -> img).
+      if (e.relatedTarget && currentTarget.contains(e.relatedTarget)) return;
+      cancelTooltip();
+    });
+
+    // Any press dismisses the tooltip so it never lingers over an activated
+    // control (matches native Win98).
+    document.addEventListener('pointerdown', cancelTooltip);
   }
 
   // --- Icon Drag (rearrange desktop icons) ---
@@ -3100,6 +3196,7 @@
     initContactForm();
     initMyComputer();
     setupSystemTrayClicks();
+    setupTooltips();
     setupContextMenus();
     setupSelectionRect();
     initSubmenus();

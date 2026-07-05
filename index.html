@@ -527,13 +527,13 @@ Mitch</div>
 
     <!-- Quick Launch -->
     <div id="quick-launch">
-      <button class="quick-launch-btn" data-action="show-desktop" title="Show Desktop">
+      <button class="quick-launch-btn" data-action="show-desktop">
         <img src="img/icons/desktop-sm.png" alt="Show Desktop" width="16" height="16">
       </button>
-      <button class="quick-launch-btn" data-window="window-contact" title="Outlook Express">
+      <button class="quick-launch-btn" data-window="window-contact">
         <img src="img/icons/contact-sm.png" alt="Outlook Express" width="16" height="16">
       </button>
-      <button class="quick-launch-btn" data-window="window-my-computer" title="My Computer">
+      <button class="quick-launch-btn" data-window="window-my-computer">
         <img src="img/icons/mycomputer-sm.png" alt="My Computer" width="16" height="16">
       </button>
     </div>
@@ -544,6 +544,9 @@ Mitch</div>
       <span id="clock" role="timer" aria-live="off" aria-atomic="true" aria-label="System clock"></span>
     </div>
   </div>
+
+  <!-- Reusable Win98 hover tooltip (one element, positioned + filled by JS). -->
+  <div id="win98-tooltip" role="tooltip" aria-hidden="true"></div>
 
   <script src="boot.js"></script>
   <script src="apps/matrix/rain.js"></script>
