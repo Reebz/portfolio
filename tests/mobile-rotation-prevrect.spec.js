@@ -11,6 +11,12 @@ test.describe('U10: maximize survives rotation without losing on-screen position
 
   test('phone: maximize portrait, rotate landscape, restore — title bar visible', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#window-about'; });
+    // Portrait phones open resizable app windows maximized by default (R9), so
+    // restore to floating first, then push the window off the right edge so the
+    // prevRect the next maximize snapshots is genuinely off-screen — that is
+    // what the rotation rewrite has to pull back into view.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
+    await page.locator('#window-about [aria-label="Maximize"]').tap();
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
 
     await page.evaluate(() => {

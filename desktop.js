@@ -252,6 +252,25 @@
     'window-cavaro': 1
   };
 
+  // R9: On portrait phones these resizable app windows open maximized (filling
+  // the screen above the taskbar) instead of cascading — a floating 520px
+  // window is unusable at 390px wide. Small fixed-size dialogs (calculator,
+  // minesweeper, run, icq, clock, visitor-counter, cavaro, shutdown, logoff)
+  // are deliberately absent: they keep their native size and open centered.
+  // Notepad windows carry a per-launch id (window-notepad-<ts>), so they're
+  // matched by prefix in openWindow rather than listed here.
+  var MAXIMIZE_DEFAULT = new Set([
+    'window-napster',
+    'window-matrix',
+    'window-help-book',
+    'window-guestbook',
+    'window-about',
+    'window-contact',
+    'window-my-computer',
+    'window-recycle-bin',
+    'window-paint'
+  ]);
+
   // --- Window Operations ---
   function openWindow(id) {
     var win = windows.get(id);
@@ -280,6 +299,24 @@
 
     win.state = 'open';
     win.el.setAttribute('data-state', 'open');
+
+    // R9: Portrait-phone open behavior. Resizable app windows enter the REAL
+    // maximized state (same data-state + prevRect snapshot toggleMaximize
+    // sets) so every downstream path — taskbar button, rotation prevRect
+    // rewrite, restore clamp — treats them like any maximized window. Seed
+    // prevRect with the cascade rect first so a later un-maximize lands
+    // somewhere sensible. Fixed-size dialogs stay native size but open
+    // centered rather than cascading off the narrow screen.
+    if (isPortraitPhone()) {
+      if (MAXIMIZE_DEFAULT.has(id) || id.indexOf('window-notepad-') === 0) {
+        win.prevRect = getWindowRect(win.el);
+        win.state = 'maximized';
+        win.el.setAttribute('data-state', 'maximized');
+      } else {
+        centerWindowInViewport(win.el);
+      }
+    }
+
     bringToFront(id);
     win.el.focus();
 
@@ -289,8 +326,9 @@
     // wider system windows (Recycle Bin width:500 → max-width clamps to
     // ~95vw, but offset 30-218 places them off-right at 390×844). Read
     // computed rect after the open class flips so the measurement is
-    // accurate. Keeps MIN_WIN_SIZE on desktop unchanged.
-    if (isMobile()) {
+    // accurate. Keeps MIN_WIN_SIZE on desktop unchanged. A maximized
+    // window is pinned flush by CSS (left/top 0 !important), so skip it.
+    if (isMobile() && win.state !== 'maximized') {
       clampWindowToViewport(win.el);
     }
 
@@ -1976,6 +2014,40 @@
     // inherit the desktop experience; the max-width clause pairs with
     // hover/pointer so narrow desktop browsers never false-positive.
     return window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches;
+  }
+
+  // R9: Portrait phones only — touch input AND a narrow (<480px) viewport.
+  // Deliberately tighter than isMobile() (max-width 767): landscape phones
+  // (480-767px) fall outside it and keep the floating-cascade behavior
+  // untouched, so maximize-by-default never fires on a wide phone.
+  function isPortraitPhone() {
+    return window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 479px)').matches;
+  }
+
+  // R9: Center a fixed-size dialog in the viewport. Portrait phones are too
+  // narrow for the cascade offset (a 340px dialog at left:30 runs off the
+  // right edge), so dialogs that opt out of maximize-by-default open centered,
+  // matching how Win98 centers its dialogs. Same pre-zoom/post-zoom unit
+  // conversion as clampWindowToViewport (getBoundingClientRect is post-zoom;
+  // style writes are pre-zoom). Called after data-state flips to 'open' so the
+  // measured rect is real.
+  function centerWindowInViewport(winEl) {
+    if (!winEl) return;
+    var z = getZoom();
+    var rect = winEl.getBoundingClientRect();
+    var cs = getComputedStyle(winEl);
+    // The mobile .window carries a --window-margin (4px). style.left positions
+    // the margin edge, so subtract the margin to center the visible border-box.
+    var marginL = parseFloat(cs.marginLeft) || 0;
+    var marginT = parseFloat(cs.marginTop) || 0;
+    var vw = window.innerWidth / z;
+    var vh = window.innerHeight / z;
+    var taskbarEl = document.getElementById('taskbar');
+    var taskbarH = taskbarEl
+      ? (taskbarEl.getBoundingClientRect().height / z)
+      : TASKBAR_HEIGHT;
+    winEl.style.left = Math.max(4, (vw - rect.width / z) / 2 - marginL) + 'px';
+    winEl.style.top = Math.max(4, (vh - taskbarH - rect.height / z) / 2 - marginT) + 'px';
   }
 
   // U4: Clamp a window's left/top so its right/bottom edge stays inside the

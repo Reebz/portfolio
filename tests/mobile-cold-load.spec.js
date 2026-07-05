@@ -56,6 +56,9 @@ test.describe('Mobile cold load', () => {
     await expect(aboutIcon).toBeVisible();
     await aboutIcon.tap();
     await page.waitForTimeout(300);
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // These phone projects are all portrait (<480px), where resizable app
+    // windows open maximized by default (R9) — the tap still launches the
+    // window, it just arrives maximized rather than floating.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
   });
 });

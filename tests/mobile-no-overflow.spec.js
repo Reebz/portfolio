@@ -108,10 +108,13 @@ test.describe('Mobile — no overflow on chrome containers', () => {
     expect(submenuMetrics.scrollHeight).toBeLessThanOrEqual(submenuMetrics.clientHeight + PX_TOLERANCE);
   });
 
-  test('R3: open window-about .window-body does not over-scroll at native size', async ({ page }) => {
+  test('R3: open window-about .window-body does not over-scroll when maximized', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#window-about'; });
     await page.waitForTimeout(250);
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // Portrait phones (<480px) open resizable app windows maximized (R9). The
+    // outer-window no-double-scroll invariant below must hold in that state too
+    // (title bar + flex body; only .window-body scrolls internally).
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
 
     // .window-body legitimately has its own internal scroll when content
     // exceeds the window — that's expected app behavior. We assert that the
