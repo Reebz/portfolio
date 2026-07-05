@@ -654,7 +654,15 @@ body {
   /* Bare-background selection-rect handlers live on #desktop itself
      (see desktop.js:1914). Suppress pan on the background, but keep
      descendants free to manage their own touch behavior. */
-  #desktop { touch-action: none; }
+  #desktop {
+    touch-action: none;
+    /* Portrait wallpaper: the base `cover` rule jams the clouds/flag logo
+       into the bottom-right corner on a tall narrow screen. Dock the logo
+       bottom-center at a contain-style scale over the teal field so it
+       reads whole — below the icon grid, clear of the ~48px taskbar. */
+    background-size: 77% auto;
+    background-position: center bottom 52px;
+  }
   #desktop > .window { touch-action: auto; }
   /* .desktop-icon under #desktop > #icon-grid keeps touch-action: none from above. */
 
@@ -778,7 +786,10 @@ body {
      .has-submenu.submenu-open > .start-submenu pair. Overflow on the
      menu is hidden to clip the off-stage submenus. */
   #start-menu {
-    bottom: var(--taskbar-min-height);
+    /* Match the taskbar's actual height (min-height + 4px) so the menu
+       bottom rests flush on the taskbar instead of overlapping its top
+       edge. */
+    bottom: calc(var(--taskbar-min-height) + 4px);
     top: auto;
     left: 0;
     width: 70vw;
@@ -789,7 +800,10 @@ body {
     position: fixed;
   }
   .start-menu-items {
-    margin-left: 24px;
+    /* Zero the default <ul> vertical margin (the * reset only sets
+       box-sizing) so items fill the menu edge-to-edge — no dead silver
+       band above Programs or below Shut Down. */
+    margin: 0 0 0 24px;
     overflow-y: auto;
     max-height: calc(75vh - 4px);
     -webkit-overflow-scrolling: touch;
@@ -1079,7 +1093,10 @@ body {
      panel (still capped) so the slide-in submenu's full width feels
      spacious. Same back-affordance pattern as portrait. */
   #start-menu {
-    bottom: var(--taskbar-min-height);
+    /* Match the taskbar's actual height (min-height + 4px) so the menu
+       bottom rests flush on the taskbar instead of overlapping its top
+       edge. */
+    bottom: calc(var(--taskbar-min-height) + 4px);
     top: auto;
     left: 0;
     width: 50vw;
@@ -1090,7 +1107,10 @@ body {
     position: fixed;
   }
   .start-menu-items {
-    margin-left: 24px;
+    /* Zero the default <ul> vertical margin (the * reset only sets
+       box-sizing) so items fill the menu edge-to-edge — no dead silver
+       band above Programs or below Shut Down. */
+    margin: 0 0 0 24px;
     overflow-y: auto;
     max-height: calc(80vh - 4px);
     -webkit-overflow-scrolling: touch;
