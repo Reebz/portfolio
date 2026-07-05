@@ -208,6 +208,12 @@
     clearTimers();
     clearTimeout(deadman);
     safeSetItem(sessionStorage, 'booted', '1');
+    // Arm the Win98 startup chime — it plays on the first post-boot gesture
+    // (autoplay policy keeps AudioContext suspended until then). Guarded so a
+    // missing sounds.js can never wedge boot teardown.
+    if (window.Sounds && typeof window.Sounds.armStartup === 'function') {
+      window.Sounds.armStartup();
+    }
     overlay.style.transition = 'opacity 0.4s';
     overlay.style.opacity = '0';
     document.body.classList.remove('booting');

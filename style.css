@@ -317,6 +317,54 @@ body {
   text-align: center;
 }
 
+/* Tray speaker toggle — CSS-drawn (no image assets). The ::before is the
+   speaker cone silhouette; the ::after is the sound waves when on, swapped
+   for a red mute slash when off. Sized to sit inside the 22px tray well. */
+#tray-speaker {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: default;
+}
+#tray-speaker:focus-visible {
+  outline: 1px dotted var(--win98-black, #000);
+  outline-offset: 1px;
+}
+#tray-speaker::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 3px;
+  width: 8px;
+  height: 10px;
+  background: #000;
+  /* Speaker facing right: small body on the left, cone opening to the right. */
+  clip-path: polygon(0% 33%, 45% 33%, 100% 0%, 100% 100%, 45% 66%, 0% 66%);
+}
+/* Sound waves (on state): a right-facing arc drawn from a bordered box. */
+#tray-speaker::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 4px;
+  width: 4px;
+  height: 8px;
+  border: 1.5px solid #000;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+/* Muted (off state): drop the waves, overlay a red diagonal slash. */
+#tray-speaker[aria-pressed="false"]::after {
+  left: 2px;
+  top: 1px;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(45deg, transparent 42%, #d40000 42%, #d40000 58%, transparent 58%);
+}
+
 /* === Start Menu === */
 #start-menu {
   position: fixed;

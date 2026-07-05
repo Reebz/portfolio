@@ -242,6 +242,15 @@
   }
 
 
+  // Dialog-style windows that play the system error "ding" when they open.
+  // Every open path (double-click, Start menu, hash deep-link, Run launcher)
+  // funnels through openWindow, so keying the sound here covers them all.
+  var DIALOG_SOUND_IDS = {
+    'window-shutdown': 1,
+    'window-run-dialog': 1,
+    'window-cavaro': 1
+  };
+
   // --- Window Operations ---
   function openWindow(id) {
     var win = windows.get(id);
@@ -292,6 +301,9 @@
 
     var openHook = windowOpenHooks[id];
     if (openHook) openHook();
+
+    // Dialog-style windows ding on open (no-op when sound is muted).
+    if (DIALOG_SOUND_IDS[id] && window.Sounds) window.Sounds.playError();
 
     announce(getTitleText(win.el) + ' opened');
   }
@@ -1274,6 +1286,45 @@
   // (hover: none) so nothing binds and no tooltip can ever show. Native title
   // attributes are avoided because they can't be styled to match Win98.
   var TOOLTIP_DELAY = 500;
+
+  // Tray speaker toggle: mutes/unmutes all system sounds and persists the
+  // choice. Default ENABLED (a null flag reads as on). Reflects state through
+  // aria-pressed (true = sound on) which the CSS keys off for the muted glyph.
+  function applySoundState(el, on) {
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    el.setAttribute('aria-label', on ? 'Sound on' : 'Sound off (muted)');
+    el.setAttribute('title', on ? 'Sound on' : 'Muted');
+    if (window.Sounds) window.Sounds.setSoundEnabled(on);
+  }
+
+  function initSoundToggle() {
+    var el = document.getElementById('tray-speaker');
+    if (!el) return;
+    el.style.cursor = 'default';
+
+    // Restore persisted preference (default ENABLED when unset).
+    applySoundState(el, safeRead('localStorage', 'sound-enabled') !== '0');
+
+    function toggle() {
+      var next = el.getAttribute('aria-pressed') !== 'true';
+      safeSet('sound-enabled', next ? '1' : '0');
+      applySoundState(el, next);
+    }
+
+    el.addEventListener('click', function(e) {
+      // Match the other tray items: close the Start menu and stop propagation
+      // so the desktop click delegator doesn't read this as a desktop tap.
+      closeStartMenuIfOpen();
+      e.stopPropagation();
+      toggle();
+    });
+    el.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+  }
 
   function setupTooltips() {
     var tooltipEl = document.getElementById('win98-tooltip');
@@ -3196,6 +3247,7 @@
     initContactForm();
     initMyComputer();
     setupSystemTrayClicks();
+    initSoundToggle();
     setupTooltips();
     setupContextMenus();
     setupSelectionRect();
