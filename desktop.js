@@ -141,22 +141,27 @@
   var windowMinimizeHooks = {};
   var windowRestoreHooks = {};
 
-  // Defensive localStorage write. Private-mode Safari throws on setItem
-  // and Chromium can throw QuotaExceededError; either should not break
-  // the page. Callers that already wrap in try/catch can call this anyway.
-  function safeSet(key, value) {
-    try { localStorage.setItem(key, value); }
-    catch (e) { /* private mode or quota; silent */ }
-  }
-
-  // Defensive read twin. Takes the storage NAME, not the object — in
-  // storage-disabled contexts the window.localStorage getter itself throws
-  // SecurityError, so the property access has to happen inside the try.
-  // An uncaught throw here would abort the rest of init().
+  // Defensive storage family. Takes the storage NAME, not the object — in
+  // storage-disabled contexts (private-mode Safari, blocked cookies) the
+  // window.localStorage/sessionStorage getter itself throws SecurityError,
+  // so the property access has to happen inside the try. Writes can also
+  // throw QuotaExceededError. None of it should break the page: reads
+  // return null, writes/removes no-op silently. An uncaught throw here
+  // would abort the rest of init().
   function safeRead(storageName, key) {
     try { return window[storageName].getItem(key); }
     catch (e) { return null; }
   }
+  function safeWrite(storageName, key, value) {
+    try { window[storageName].setItem(key, value); }
+    catch (e) { /* private mode or quota; silent */ }
+  }
+  function safeRemove(storageName, key) {
+    try { window[storageName].removeItem(key); }
+    catch (e) { /* storage disabled; silent */ }
+  }
+  // Back-compat localStorage-write alias for pre-existing call sites.
+  function safeSet(key, value) { safeWrite('localStorage', key, value); }
 
   // Live taskbar height — mobile CSS pushes the taskbar to 44px via
   // --taskbar-min-height; reading the element keeps tray popovers from
@@ -1060,7 +1065,7 @@
     var count = parseInt(safeRead('localStorage', 'visitor-count')) || 3;
     if (!safeRead('sessionStorage', 'counted')) {
       count++;
-      try { sessionStorage.setItem('counted', '1'); } catch (e) {}
+      safeWrite('sessionStorage', 'counted', '1');
       safeSet('visitor-count', count);
     }
     return formatCount(count);
@@ -1093,7 +1098,7 @@
         var formatted = formatCount(data.count);
         if (!formatted) return;
         safeSet(COUNTER_CACHE_KEY, formatted);
-        try { sessionStorage.setItem(COUNTER_FETCHED_AT_KEY, String(Date.now())); } catch (e) {}
+        safeWrite('sessionStorage', COUNTER_FETCHED_AT_KEY, String(Date.now()));
         renderVisitorCount(formatted);
       })
       .catch(function() { /* timeout or network error — keep cached/fallback display */ });
@@ -1175,7 +1180,7 @@
 
     var icons = elIconGrid.querySelectorAll('.desktop-icon');
     var saved = null;
-    try { saved = JSON.parse(localStorage.getItem('icon-positions')); } catch(e) {}
+    try { saved = JSON.parse(safeRead('localStorage', 'icon-positions')); } catch(e) {}
 
     var cellW = 80;
     var cellH = 90;
@@ -1205,7 +1210,7 @@
         }
       }
       if (anyOutOfBounds) {
-        try { localStorage.removeItem('icon-positions'); } catch (e) {}
+        safeRemove('localStorage', 'icon-positions');
         saved = null;
       }
     }
@@ -1809,7 +1814,7 @@
     // Only on zoom-change crossings: discard persisted icon positions so icons
     // reflow under the CSS-driven mobile layout for the new mode.
     if (lastZoom !== null && currentZoom !== lastZoom) {
-      try { localStorage.removeItem('icon-positions'); } catch (e) {}
+      safeRemove('localStorage', 'icon-positions');
     }
 
     layoutIcons();
@@ -1967,7 +1972,7 @@
 
       // Hide Cavaro icon if dismissed within 48h
       if (project.type === 'cavaro') {
-        var dismissed = parseInt(localStorage.getItem('cavaro-dismissed')) || 0;
+        var dismissed = parseInt(safeRead('localStorage', 'cavaro-dismissed')) || 0;
         var hoursSince = (Date.now() - dismissed) / (1000 * 60 * 60);
         if (dismissed > 0 && hoursSince < 48) {
           icon.style.display = 'none';
@@ -2171,7 +2176,7 @@
           case 'refresh': location.reload(); break;
           case 'properties': openWindow('window-my-computer'); break;
           case 'arrange-icons':
-            try { localStorage.removeItem('icon-positions'); } catch (e) {}
+            safeRemove('localStorage', 'icon-positions');
             layoutIcons();
             break;
           case 'ctx-minimize':
@@ -2442,12 +2447,12 @@
       overlay.innerHTML = '<div>It\'s now safe to turn off<br>your computer.</div>';
       document.body.appendChild(overlay);
       setTimeout(function() {
-        try { sessionStorage.removeItem('booted'); } catch (e) {}
+        safeRemove('sessionStorage', 'booted');
         location.reload();
       }, 3000);
     } else if (option.id === 'sd-restart' || option.id === 'sd-dos') {
-      try { sessionStorage.removeItem('booted'); } catch (e) {}
-      try { localStorage.removeItem('cavaro-dismissed'); } catch (e) {}
+      safeRemove('sessionStorage', 'booted');
+      safeRemove('localStorage', 'cavaro-dismissed');
       location.reload();
     }
   }
