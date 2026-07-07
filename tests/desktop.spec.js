@@ -297,6 +297,60 @@ test.describe('Log Off', () => {
   });
 });
 
+test.describe('Storage-disabled resilience (private mode / blocked storage)', () => {
+  // safeRead/safeWrite/safeRemove wrap every storage touch in try/catch so a
+  // throwing localStorage/sessionStorage (Safari Private Browsing, blocked
+  // cookies) can't abort init. Make every storage method throw before load and
+  // assert the desktop still hydrates with zero console errors.
+  test('desktop init completes and stays console-clean when storage throws', async ({ browser }) => {
+    // Reduced-motion context skips the BIOS boot WITHOUT sessionStorage — which
+    // now throws — landing us straight on the desktop (see boot-skip.spec.js).
+    const context = await browser.newContext({ reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    await mockGoatCounter(page);
+    const gate = attachConsoleGate(page);
+
+    // Override the methods on Storage.prototype (shared by localStorage AND
+    // sessionStorage) so every getItem/setItem/removeItem throws. Defining own
+    // props on the instances doesn't shadow the prototype for these exotic
+    // objects, so patch the prototype directly.
+    await page.addInitScript(() => {
+      const proto = window.Storage && window.Storage.prototype;
+      if (!proto) return;
+      ['getItem', 'setItem', 'removeItem'].forEach((m) => {
+        Object.defineProperty(proto, m, {
+          configurable: true,
+          writable: true,
+          value: function () { throw new Error('storage disabled'); },
+        });
+      });
+    });
+
+    await page.goto('/');
+
+    // Confirm the override actually throws — otherwise the test proves nothing.
+    const throws = await page.evaluate(() => {
+      try { window.localStorage.getItem('x'); return false; }
+      catch (e) { return true; }
+    });
+    expect(throws).toBe(true);
+
+    // Init still hydrates the icon grid and taskbar despite every storage
+    // access throwing into the safe* catch paths.
+    await page.waitForFunction(
+      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 14
+    );
+    await expect(page.locator('#taskbar')).toBeVisible();
+    await expect(page.locator('#start-button')).toBeVisible();
+
+    // Let deferred init (visitor counter, hydration) settle so a late throw surfaces.
+    await page.waitForTimeout(400);
+    assertConsoleClean(gate);
+
+    await context.close();
+  });
+});
+
 test.describe('404 Page', () => {
   test('shows the Win98 error dialog', async ({ page }) => {
     // npx serve falls back to index.html for unknown paths, so we can't reach

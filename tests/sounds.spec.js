@@ -114,4 +114,45 @@ test.describe('U8 — system sounds + tray speaker toggle', () => {
     // Muted playError never touched an AudioContext.
     expect(await page.evaluate(() => window.__acCount)).toBe(0);
   });
+
+  // armStartup arms a one-shot capture listener that lazily builds the
+  // AudioContext and plays the chime on the FIRST post-boot gesture, then
+  // unbinds itself. Boot is skipped here (no POST beep to pollute the counter),
+  // so we arm it directly and drive two synthetic gestures.
+  test('armStartup builds the AudioContext once on the first gesture only', async ({ page }) => {
+    // Count every AudioContext / webkitAudioContext construction.
+    await page.addInitScript(() => {
+      window.__acCount = 0;
+      ['AudioContext', 'webkitAudioContext'].forEach((name) => {
+        const Orig = window[name];
+        if (!Orig) return;
+        window[name] = function (...args) {
+          window.__acCount++;
+          return new Orig(...args);
+        };
+        window[name].prototype = Orig.prototype;
+      });
+    });
+
+    await bootToDesktop(page);
+
+    // Sound is enabled by default — that's what makes the chime (and the
+    // AudioContext it creates) fire, so the count is meaningful.
+    await expect(page.locator('#tray-speaker')).toHaveAttribute('aria-pressed', 'true');
+    // Nothing has built a context yet (boot skipped, no play calls in init).
+    expect(await page.evaluate(() => window.__acCount)).toBe(0);
+
+    // Arm the one-shot listener (completeBoot does this on the real boot path).
+    await page.evaluate(() => window.Sounds.armStartup());
+
+    // First gesture: lazily builds the AudioContext exactly once.
+    await page.evaluate(() => document.dispatchEvent(new Event('pointerdown')));
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__acCount)).toBe(1);
+
+    // One-shot: a second gesture must NOT build another context.
+    await page.evaluate(() => document.dispatchEvent(new Event('pointerdown')));
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__acCount)).toBe(1);
+  });
 });

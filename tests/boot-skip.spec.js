@@ -63,3 +63,39 @@ test.describe('Boot skip paths', () => {
     await expect(page.locator('#boot-overlay')).toHaveCount(0);
   });
 });
+
+test.describe('Boot deadman watchdog', () => {
+  // boot.js arms a 15s deadman timer that force-runs completeBoot if the POST/
+  // splash sequence wedges. To exercise ONLY that path we halt the normal
+  // chain: swallow the three named timer callbacks that drive it (nextStage,
+  // typeNextLine, paintSplash) so they never reschedule. The deadman and
+  // completeBoot's own overlay-removal timer are anonymous, so both survive.
+  // With the chain stalled, the fake clock's fast-forward past 15s is the only
+  // thing that can clear the overlay — proving the watchdog fired.
+  test('deadman force-clears the overlay when the boot sequence wedges', async ({ page }) => {
+    await page.clock.install();
+    await page.addInitScript(() => {
+      const realSetTimeout = window.setTimeout;
+      window.setTimeout = function (fn, delay) {
+        const name = (fn && fn.name) || '';
+        if (name === 'nextStage' || name === 'typeNextLine' || name === 'paintSplash') {
+          return 0; // swallow the POST/splash chain
+        }
+        return realSetTimeout.apply(this, arguments);
+      };
+    });
+
+    await page.goto('/');
+    // Boot overlay is up and the sequence is wedged — boot has NOT completed.
+    await expect(page.locator('#boot-overlay')).toBeVisible();
+    expect(await page.evaluate(() => sessionStorage.getItem('booted'))).toBeNull();
+
+    // Jump past the 15s deadman.
+    await page.clock.fastForward(16000);
+    await page.waitForTimeout(100);
+
+    // Watchdog ran completeBoot: overlay torn down, booted flag set.
+    await expect(page.locator('#boot-overlay')).toHaveCount(0);
+    expect(await page.evaluate(() => sessionStorage.getItem('booted'))).toBe('1');
+  });
+});
