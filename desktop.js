@@ -38,9 +38,9 @@
     {
       id: 'avails-click',
       title: 'Avails Click',
-      description: 'Coming soon',
-      url: null,
-      type: 'construction',
+      description: 'Availability tool',
+      url: 'https://www.availabilityclick.com/',
+      type: 'link',
       icon: 'img/icons/calendar.png'
     },
     {
