@@ -17,6 +17,8 @@ What's this for? Fun and nostalgia. I wanted to bring back the feeling of the PC
 - Right-click context menus on the desktop, title bars, and taskbar
 - Desktop icon drag-and-drop with localStorage persistence
 - Minesweeper, Calculator, Paint (via jspaint.app), and a paginated Help book
+- ICQ visual shell with contact list, status dropdown, and toolbar
+- Napster v2.0 BETA 7 with mock search results and in-progress transfers (links out to YouTube)
 - Various easter eggs!
 - Formspree-powered contact form styled as Outlook Express
 - Responsive Win98 desktop on phones — touch drag, single-tap activation, multi-column icon grid, slide-in Start submenus
@@ -27,11 +29,11 @@ What's this for? Fun and nostalgia. I wanted to bring back the feeling of the PC
 
 - HTML, CSS, vanilla JavaScript
 - [98.css](https://jdan.github.io/98.css/) for Windows 98 UI components
-- No frameworks, no build step, no npm
+- No frameworks, no build step. (npm only for the Playwright test toolchain.)
 
 ## Testing
 
-Playwright drives the test suite across five projects:
+Playwright drives the test suite across five device projects:
 
 - `desktop` (chromium, default viewport)
 - `iphone-se` (375×667 emulated WebKit)

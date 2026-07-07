@@ -24,7 +24,10 @@ test.describe('iOS auto-zoom prevention', () => {
     // Open Contact via hash deep-link.
     await page.evaluate(() => { window.location.hash = '#window-contact'; });
     await page.waitForTimeout(200);
-    await expect(page.locator('#window-contact')).toHaveAttribute('data-state', 'open');
+    // R9: Contact is in MAXIMIZE_DEFAULT — opens maximized on a portrait phone.
+    // The font-size floor is a computed-style property of the input, unchanged
+    // by whether its window floats or fills the viewport.
+    await expect(page.locator('#window-contact')).toHaveAttribute('data-state', 'maximized');
 
     const input = page.locator('#contact-from');
     await expect(input).toBeVisible();

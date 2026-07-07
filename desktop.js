@@ -13,6 +13,12 @@
   // user can always grab the title bar back from the viewport edges.
   var DRAG_EDGE_MARGIN_X = 100; // px kept visible on the right edge
   var DRAG_EDGE_MARGIN_Y = 30;  // px kept visible above the taskbar
+  // Minimize/restore zoom-rectangle animation. Duration matches the
+  // Start-menu submenu slide (style.css transform 0.18s ease-out). The
+  // transitionend fallback fires a touch later so a dropped event can't
+  // wedge the window in a half-transformed state.
+  var WINDOW_ANIM_MS = 180;
+  var WINDOW_ANIM_FALLBACK_MS = 250;
 
   // --- Project Data ---
   var PROJECTS = [
@@ -20,105 +26,78 @@
       id: 'always-draft',
       title: 'Always dRaft',
       description: 'Blog',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/blog.png'
     },
     {
       id: 'claude-battery',
       title: 'Claude Battery',
       description: 'AI tool',
-      tech: [],
       url: 'https://claudebattery.com/',
       type: 'link',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/battery.png'
     },
     {
       id: 'avails-click',
       title: 'Avails Click',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/calendar.png'
     },
     {
       id: 'linkedin',
       title: 'LinkedIn',
       description: 'Professional profile',
-      tech: [],
       url: 'https://www.linkedin.com/in/mitchribar/',
       type: 'link',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/linkedin.png'
     },
     {
       id: 'obsidian-game',
       title: 'Obsidian Game',
       description: 'Game project',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-26',
       icon: 'img/icons/game.png'
     },
     {
       id: 'microgram',
       title: 'Microgram',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-27',
       icon: 'img/icons/microgram.png'
     },
     {
       id: 'prototypist',
       title: 'Prototypist',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-27',
       icon: 'img/icons/prototypist.png'
     },
     {
       id: 'cavaro',
       title: 'Cavaro',
       description: 'Stealth mode',
-      tech: [],
       url: null,
       type: 'cavaro',
-      screenshot: null,
-      updated: '2026-03-27',
       icon: 'img/icons/cavaro.png'
     },
     {
       id: 'snowball-dodge',
       title: 'Snowball Dodge',
       description: 'Coming soon',
-      tech: [],
       url: null,
       type: 'construction',
-      screenshot: null,
-      updated: '2026-03-28',
       icon: 'img/icons/snowball.png'
     }
   ];
 
   // Non-project windows (hand-authored in HTML)
-  var SYSTEM_WINDOWS = ['about', 'guestbook', 'contact', 'my-computer', 'recycle-bin', 'visitor-counter', 'clock', 'shutdown'];
+  var SYSTEM_WINDOWS = ['about', 'guestbook', 'contact', 'my-computer', 'recycle-bin', 'visitor-counter', 'clock', 'shutdown', 'logoff'];
 
   // All valid window IDs (for hash routing whitelist)
   var VALID_WINDOWS = new Set();
@@ -136,6 +115,95 @@
   // flag guards against double-binding if init() ever runs twice.
   var lastZoom = null;
   var resizeHandlerBound = false;
+
+  // Tracks which per-app <script> files have already been injected. Each
+  // launcher (calculator, minesweeper, napster) guards on this set so the
+  // app IIFE runs exactly once per page lifetime. Without the guard, a
+  // relaunch appended a fresh <script> tag every time, multiplying global
+  // document-level keydown/click handlers and re-running module-side init.
+  var appScriptLoaded = new Set();
+
+  // Load a per-app <script> once per page, then run its init on every launch.
+  // runInit is the caller's closure (internally idempotent) so repeat opens
+  // start fresh without re-fetching. onerror unmarks the key so a failed fetch
+  // can be retried on the next launch.
+  function loadAppScriptOnce(key, src, runInit) {
+    if (appScriptLoaded.has(key)) { runInit(); return; }
+    var script = document.createElement('script');
+    script.src = src;
+    script.onload = runInit;
+    script.onerror = function() { appScriptLoaded.delete(key); script.remove(); };
+    document.head.appendChild(script);
+    appScriptLoaded.add(key);
+  }
+
+  // Per-window cleanup registry. Used by launchers that schedule timers,
+  // intervals, or RAF outside the window DOM (e.g. Matrix terminal's chained
+  // setTimeouts). closeWindow runs the registered fns before tearing down,
+  // so detached-DOM callbacks can't fire.
+  var windowCleanups = new Map();
+  function registerCleanup(windowId, fn) {
+    if (!windowCleanups.has(windowId)) windowCleanups.set(windowId, []);
+    windowCleanups.get(windowId).push(fn);
+  }
+  function runCleanups(windowId) {
+    var fns = windowCleanups.get(windowId);
+    if (!fns) return;
+    fns.forEach(function(fn) { try { fn(); } catch (e) {} });
+    windowCleanups.delete(windowId);
+  }
+
+  // Per-window lifecycle hooks. openHooks fire after openWindow brings a
+  // window to the front (covers hash deep-links and tray-click entry paths
+  // alike). minimizeHooks pause expensive per-window work (Matrix RAF,
+  // clock interval) when the window goes off-screen; restoreHooks resume.
+  var windowOpenHooks = {};
+  var windowMinimizeHooks = {};
+  var windowRestoreHooks = {};
+
+  // Defensive storage family. Takes the storage NAME, not the object — in
+  // storage-disabled contexts (private-mode Safari, blocked cookies) the
+  // window.localStorage/sessionStorage getter itself throws SecurityError,
+  // so the property access has to happen inside the try. Writes can also
+  // throw QuotaExceededError. None of it should break the page: reads
+  // return null, writes/removes no-op silently. An uncaught throw here
+  // would abort the rest of init().
+  function safeRead(storageName, key) {
+    try { return window[storageName].getItem(key); }
+    catch (e) { return null; }
+  }
+  function safeWrite(storageName, key, value) {
+    try { window[storageName].setItem(key, value); }
+    catch (e) { /* private mode or quota; silent */ }
+  }
+  function safeRemove(storageName, key) {
+    try { window[storageName].removeItem(key); }
+    catch (e) { /* storage disabled; silent */ }
+  }
+  // Back-compat localStorage-write alias for pre-existing call sites.
+  function safeSet(key, value) { safeWrite('localStorage', key, value); }
+
+  // Live taskbar height — mobile CSS pushes the taskbar to 44px via
+  // --taskbar-min-height; reading the element keeps tray popovers from
+  // sliding behind the bar on phones.
+  function getTaskbarHeight() {
+    var el = document.getElementById('taskbar');
+    return el ? el.getBoundingClientRect().height : TASKBAR_HEIGHT;
+  }
+
+  // Taskbar height in pre-zoom CSS units, for geometry math that mixes with
+  // style writes on tablets (body { zoom }). Only the measured height is
+  // zoom-divided; the no-taskbar fallback is already a CSS-unit constant.
+  function getTaskbarHeightCss(z) {
+    var el = document.getElementById('taskbar');
+    return el ? (el.getBoundingClientRect().height / z) : TASKBAR_HEIGHT;
+  }
+
+  // Token bumped on every contact-form submit AND on every contact-window
+  // close. The post-success 1500ms timeout captures the token at submit
+  // time and only mutates state if its captured value still matches —
+  // protects against mid-flight close/reopen wiping a fresh draft.
+  var contactSubmitToken = 0;
 
   // Single source of truth for registering a window with both the routing whitelist
   // and the lifecycle map. Every window-creation path flows through this.
@@ -196,6 +264,35 @@
   }
 
 
+  // Dialog-style windows that play the system error "ding" when they open.
+  // Every open path (double-click, Start menu, hash deep-link, Run launcher)
+  // funnels through openWindow, so keying the sound here covers them all.
+  var DIALOG_SOUND_IDS = {
+    'window-shutdown': 1,
+    'window-logoff': 1,
+    'window-run-dialog': 1,
+    'window-cavaro': 1
+  };
+
+  // On portrait phones these resizable app windows open maximized (filling
+  // the screen above the taskbar) instead of cascading — a floating 520px
+  // window is unusable at 390px wide. Small fixed-size dialogs (calculator,
+  // minesweeper, run, icq, clock, visitor-counter, cavaro, shutdown, logoff)
+  // are deliberately absent: they keep their native size and open centered.
+  // Notepad windows carry a per-launch id (window-notepad-<ts>), so they're
+  // matched by prefix in openWindow rather than listed here.
+  var MAXIMIZE_DEFAULT = new Set([
+    'window-napster',
+    'window-matrix',
+    'window-help-book',
+    'window-guestbook',
+    'window-about',
+    'window-contact',
+    'window-my-computer',
+    'window-recycle-bin',
+    'window-paint'
+  ]);
+
   // --- Window Operations ---
   function openWindow(id) {
     var win = windows.get(id);
@@ -204,6 +301,8 @@
     if (win.state === 'open' || win.state === 'maximized') {
       bringToFront(id);
       win.el.focus();
+      var existingHook = windowOpenHooks[id];
+      if (existingHook) existingHook();
       return;
     }
 
@@ -222,6 +321,24 @@
 
     win.state = 'open';
     win.el.setAttribute('data-state', 'open');
+
+    // Portrait-phone open behavior. Resizable app windows enter the REAL
+    // maximized state (same data-state + prevRect snapshot toggleMaximize
+    // sets) so every downstream path — taskbar button, rotation prevRect
+    // rewrite, restore clamp — treats them like any maximized window. Seed
+    // prevRect with the cascade rect first so a later un-maximize lands
+    // somewhere sensible. Fixed-size dialogs stay native size but open
+    // centered rather than cascading off the narrow screen.
+    if (isPortraitPhone()) {
+      if (MAXIMIZE_DEFAULT.has(id) || id.indexOf('window-notepad-') === 0) {
+        win.prevRect = getWindowRect(win.el);
+        win.state = 'maximized';
+        win.el.setAttribute('data-state', 'maximized');
+      } else {
+        centerWindowInViewport(win.el);
+      }
+    }
+
     bringToFront(id);
     win.el.focus();
 
@@ -231,8 +348,9 @@
     // wider system windows (Recycle Bin width:500 → max-width clamps to
     // ~95vw, but offset 30-218 places them off-right at 390×844). Read
     // computed rect after the open class flips so the measurement is
-    // accurate. Keeps MIN_WIN_SIZE on desktop unchanged.
-    if (isMobile()) {
+    // accurate. Keeps MIN_WIN_SIZE on desktop unchanged. A maximized
+    // window is pinned flush by CSS (left/top 0 !important), so skip it.
+    if (isMobile() && win.state !== 'maximized') {
       clampWindowToViewport(win.el);
     }
 
@@ -242,6 +360,12 @@
     // Update hash
     updateHash(id);
 
+    var openHook = windowOpenHooks[id];
+    if (openHook) openHook();
+
+    // Dialog-style windows ding on open (no-op when sound is muted).
+    if (DIALOG_SOUND_IDS[id] && window.Sounds) window.Sounds.playError();
+
     announce(getTitleText(win.el) + ' opened');
   }
 
@@ -249,12 +373,22 @@
     var win = windows.get(id);
     if (!win || win.state === 'closed') return;
 
+    // Snap any in-flight minimize/restore animation to its end before teardown,
+    // matching minimizeWindow/restoreWindow. Otherwise the pending finalize
+    // (fallback timer or transitionend) fires ~250ms later and resurrects the
+    // just-closed window into a phantom 'minimized' state with no taskbar chip.
+    if (win.animFinish) win.animFinish();
+
     // Cavaro self-destruct: save dismissal and remove icon
     if (id === 'window-cavaro') {
-      localStorage.setItem('cavaro-dismissed', Date.now());
+      safeSet('cavaro-dismissed', Date.now());
       var cavaroIcon = elIconGrid.querySelector('[data-window-id="window-cavaro"]');
       if (cavaroIcon) cavaroIcon.remove();
     }
+
+    // Run any per-window cleanup callbacks (matrix timers, etc.) before
+    // the DOM/handlers go away.
+    runCleanups(id);
 
     // Cancel matrix rain animation if closing the matrix window
     if (id === 'window-matrix') {
@@ -264,6 +398,13 @@
 
     // Stop analogue clock if closing the clock window
     if (id === 'window-clock') stopAnalogueClock();
+
+    // Bump the contact-submit token so any in-flight fetch resolution that
+    // tries to auto-close/reset the form becomes a no-op for the new instance.
+    if (id === 'window-contact') contactSubmitToken++;
+
+    // Reset help-book render guard so the next launch can re-render cleanly.
+    if (id === 'window-help-book') helpBookRendered = false;
 
     win.state = 'closed';
     win.el.setAttribute('data-state', 'closed');
@@ -305,57 +446,179 @@
     }
   }
 
+  // Honor the OS "reduce motion" setting. Wrapped because matchMedia can
+  // be absent/throwing in exotic embeddings; a missing signal means animate.
+  function prefersReducedMotion() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+  }
+
+  // Translate (in unzoomed CSS px) that moves the window's center onto the
+  // taskbar button's center. getBoundingClientRect returns zoom-scaled device
+  // px for both elements, so their delta is device px; dividing by the body
+  // zoom converts it to the element-local units a CSS transform expects (the
+  // transform is re-scaled by the same zoom when painted, landing on target).
+  function taskbarVector(winEl, targetEl) {
+    var z = getZoom();
+    var wr = winEl.getBoundingClientRect();
+    var br = targetEl.getBoundingClientRect();
+    return {
+      x: ((br.left + br.width / 2) - (wr.left + wr.width / 2)) / z,
+      y: ((br.top + br.height / 2) - (wr.top + wr.height / 2)) / z
+    };
+  }
+
+  // Run a one-shot transform+opacity transition on win.el from
+  // (startTransform/startOpacity) to (endTransform/endOpacity), then clear the
+  // inline transition/transform/opacity and call onDone. Completion is
+  // idempotent via win.animFinish: a transitionend, the fallback timer, or a
+  // double-fire from the next minimize/restore all snap it to the end exactly
+  // once, so the window can never wedge in a half-transformed state.
+  function animateWindowTransform(win, startTransform, startOpacity, endTransform, endOpacity, onDone) {
+    var el = win.el;
+    var finished = false;
+    var fallback = null;
+    function onEnd(e) {
+      if (e.target === el && e.propertyName === 'transform') finish();
+    }
+    function finish() {
+      if (finished) return;
+      finished = true;
+      if (fallback) { clearTimeout(fallback); fallback = null; }
+      el.removeEventListener('transitionend', onEnd);
+      win.animFinish = null;
+      el.style.transition = '';
+      el.style.transform = '';
+      el.style.opacity = '';
+      if (onDone) onDone();
+    }
+    win.animFinish = finish;
+
+    // Commit the start state with no transition, force a reflow so it becomes
+    // the transition origin, then flip to the end state under the transition.
+    el.style.transition = 'none';
+    el.style.transform = startTransform;
+    el.style.opacity = startOpacity;
+    void el.offsetWidth; // reflow: lock in the start state
+    el.addEventListener('transitionend', onEnd);
+    el.style.transition = 'transform ' + WINDOW_ANIM_MS + 'ms ease-out, opacity ' + WINDOW_ANIM_MS + 'ms ease-out';
+    el.style.transform = endTransform;
+    el.style.opacity = endOpacity;
+    fallback = setTimeout(finish, WINDOW_ANIM_FALLBACK_MS);
+  }
+
   function minimizeWindow(id) {
     var win = windows.get(id);
-    if (!win || win.state !== 'open' && win.state !== 'maximized') return;
+    if (!win) return;
 
-    // Save position before minimize
+    // Double-fire guard: snap any in-flight minimize/restore animation to its
+    // end before starting, so overlapping calls can't strand the transform.
+    if (win.animFinish) win.animFinish();
+
+    if (win.state !== 'open' && win.state !== 'maximized') return;
+
+    // Remember whether we were maximized so restore-from-minimize can
+    // reapply maximize state instead of stranding the window at its
+    // pre-maximize prevRect (issue: show-desktop on a maximized window
+    // would lose the maximize state).
+    win.wasMaximized = (win.state === 'maximized');
+
+    // Save position before minimize. In the 'open' case, capture the
+    // current rect; in the 'maximized' case prevRect already holds the
+    // pre-maximize position, so leave it alone.
     if (win.state === 'open') {
       win.prevRect = getWindowRect(win.el);
     }
 
-    win.state = 'minimized';
-    win.el.setAttribute('data-state', 'minimized');
-    win.el.style.display = 'none';
+    // Terminal state + bookkeeping. Runs now (instant path) or on animation
+    // completion. Flipping data-state to 'minimized' also hides the element
+    // (the base .window { display:none } rule), which is why it can't happen
+    // until the zoom-rectangle animation is done.
+    var finalize = function() {
+      win.state = 'minimized';
+      win.el.setAttribute('data-state', 'minimized');
+      win.el.style.display = 'none';
+      if (win.taskbarBtn) {
+        win.taskbarBtn.setAttribute('aria-pressed', 'false');
+      }
+      if (activeWindowId === id) {
+        activeWindowId = null;
+        focusNextWindow();
+      }
+      var minHook = windowMinimizeHooks[id];
+      if (minHook) minHook();
+      announce(getTitleText(win.el) + ' minimized');
+    };
 
-    // Update taskbar button
-    if (win.taskbarBtn) {
-      win.taskbarBtn.setAttribute('aria-pressed', 'false');
+    // Skip the animation (minimize instantly) when motion is reduced, there is
+    // no taskbar button to fly toward, or the window is maximized — a maximized
+    // window carries transform:none !important, which would swallow the inline
+    // transform anyway, so it disappears instantly by design.
+    if (win.state === 'maximized' || !win.taskbarBtn || prefersReducedMotion()) {
+      finalize();
+      return;
     }
 
-    if (activeWindowId === id) {
-      activeWindowId = null;
-      focusNextWindow();
-    }
-
-    announce(getTitleText(win.el) + ' minimized');
+    var v = taskbarVector(win.el, win.taskbarBtn);
+    var end = 'translate(' + v.x + 'px, ' + v.y + 'px) scale(0.05)';
+    animateWindowTransform(win, 'translate(0px, 0px) scale(1)', '1', end, '0', finalize);
   }
 
   function restoreWindow(id) {
     var win = windows.get(id);
     if (!win) return;
 
+    // Double-fire guard: snap any in-flight minimize/restore animation to its
+    // end before starting so overlapping calls can't strand the transform.
+    if (win.animFinish) win.animFinish();
+
     if (win.state === 'minimized') {
-      win.state = 'open';
-      win.el.setAttribute('data-state', 'open');
       win.el.style.display = '';
 
-      if (win.prevRect) {
-        win.el.style.left = win.prevRect.x + 'px';
-        win.el.style.top = win.prevRect.y + 'px';
-        win.el.style.width = win.prevRect.w + 'px';
-        win.el.style.height = win.prevRect.h + 'px';
+      if (win.wasMaximized) {
+        win.state = 'maximized';
+        win.el.setAttribute('data-state', 'maximized');
+        win.wasMaximized = false;
+      } else {
+        win.state = 'open';
+        win.el.setAttribute('data-state', 'open');
+        if (win.prevRect) {
+          win.el.style.left = win.prevRect.x + 'px';
+          win.el.style.top = win.prevRect.y + 'px';
+          win.el.style.width = win.prevRect.w + 'px';
+          win.el.style.height = win.prevRect.h + 'px';
+        }
       }
+
+      clampWindowToViewport(win.el);
 
       bringToFront(id);
       win.el.focus();
+
+      var resHook = windowRestoreHooks[id];
+      if (resHook) resHook();
+
       announce(getTitleText(win.el) + ' restored');
+
+      // Reverse of minimize: grow the window out from the taskbar button.
+      // Same skip conditions — reduced motion, no button, or maximized (its
+      // transform:none !important would suppress the inline transform).
+      if (win.state !== 'maximized' && win.taskbarBtn && !prefersReducedMotion()) {
+        var v = taskbarVector(win.el, win.taskbarBtn);
+        var start = 'translate(' + v.x + 'px, ' + v.y + 'px) scale(0.05)';
+        animateWindowTransform(win, start, '0', 'translate(0px, 0px) scale(1)', '1', null);
+      }
     }
   }
 
   function toggleMaximize(id) {
     var win = windows.get(id);
     if (!win) return;
+
+    // Snap any in-flight minimize/restore animation to its end before mutating
+    // state, so a maximize toggle during the fly-to-taskbar transition can't be
+    // overwritten by the pending finalize (same guard as minimize/restore).
+    if (win.animFinish) win.animFinish();
 
     if (win.state === 'maximized') {
       // Restore
@@ -367,6 +630,7 @@
         win.el.style.width = win.prevRect.w + 'px';
         win.el.style.height = win.prevRect.h + 'px';
       }
+      clampWindowToViewport(win.el);
       announce(getTitleText(win.el) + ' restored');
     } else if (win.state === 'open') {
       // Save current rect then maximize
@@ -472,11 +736,17 @@
     resizeState.edge = edge;
     resizeState.startX = e.clientX;
     resizeState.startY = e.clientY;
+    // Snapshot size in CSS px so it stays in the same units as the style
+    // writes in onResizeMove. Read via getBoundingClientRect()/zoom (the
+    // clampWindowToViewport pattern), NOT offsetWidth/zoom: offsetWidth is
+    // already unzoomed, so dividing it by zoom double-counts and makes
+    // outward drags shrink the window under body zoom 1.5.
+    var rect = win.el.getBoundingClientRect();
     resizeState.startRect = {
       x: parseInt(win.el.style.left) || 0,
       y: parseInt(win.el.style.top) || 0,
-      w: win.el.offsetWidth / z,
-      h: win.el.offsetHeight / z
+      w: rect.width / z,
+      h: rect.height / z
     };
 
     // Disable pointer events on iframes during resize
@@ -561,7 +831,7 @@
       });
     }
 
-    e.target.releasePointerCapture(e.pointerId);
+    try { e.target.releasePointerCapture(e.pointerId); } catch (err) {}
     resizeState.active = false;
     resizeState.windowId = null;
     resizeState.edge = null;
@@ -639,9 +909,14 @@
       win.el.style.top = (dragState.pendingY / z) + 'px';
       win.el.style.willChange = '';
       dragState.suppressClick = true;
+    } else if (win && win.el) {
+      // Cancelled before drag threshold met — reset willChange anyway.
+      win.el.style.willChange = '';
     }
 
-    e.target.releasePointerCapture(e.pointerId);
+    // releasePointerCapture is safe to call when capture was already lost
+    // (pointercancel often arrives after the browser dropped capture).
+    try { e.target.releasePointerCapture(e.pointerId); } catch (err) {}
     dragState.windowId = null;
     dragState.active = false;
   }
@@ -767,29 +1042,40 @@
   // --- Clock (Sydney, Australia timezone) ---
   var TIMEZONE = 'Australia/Sydney';
 
-  // Build a Date-equivalent { hours, minutes } for the configured timezone via
-  // Intl.DateTimeFormat.formatToParts. The previous toLocaleString round-trip
-  // was implementation-defined for non-ISO date strings and could degrade in
-  // some locales/engines.
+  // Build a Date-equivalent { hours, minutes, seconds } for the configured
+  // timezone via Intl.DateTimeFormat.formatToParts. The formatter is built
+  // once and reused so per-tick clock work doesn't rebuild it. Seconds are
+  // included so the analogue second hand and the digital :SS readout track
+  // real time instead of always rendering :00.
+  var sydneyFormatter = null;
+  function getSydneyFormatter() {
+    if (!sydneyFormatter) {
+      sydneyFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: TIMEZONE,
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    }
+    return sydneyFormatter;
+  }
+
   function getSydneyTimeParts() {
-    var parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: TIMEZONE,
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(new Date());
-    var hour = 0, minute = 0;
+    var parts = getSydneyFormatter().formatToParts(new Date());
+    var hour = 0, minute = 0, second = 0;
     parts.forEach(function(p) {
       if (p.type === 'hour') hour = parseInt(p.value, 10) % 24;
       else if (p.type === 'minute') minute = parseInt(p.value, 10);
+      else if (p.type === 'second') second = parseInt(p.value, 10);
     });
-    return { hours: hour, minutes: minute };
+    return { hours: hour, minutes: minute, seconds: second };
   }
 
   function getSydneyTime() {
     var p = getSydneyTimeParts();
     var d = new Date();
-    d.setHours(p.hours, p.minutes, 0, 0);
+    d.setHours(p.hours, p.minutes, p.seconds, 0);
     return d;
   }
 
@@ -800,6 +1086,15 @@
     h = h % 12 || 12;
     m = m < 10 ? '0' + m : m;
     return h + ':' + m + ' ' + ampm;
+  }
+
+  // Full weekday date (en-AU long date). Single source shared by the
+  // Date/Time window's date readout and the tray-clock hover tooltip so
+  // both render identically.
+  function formatSydneyFullDate(date) {
+    return date.toLocaleDateString('en-AU', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    });
   }
 
   function startClock() {
@@ -822,6 +1117,9 @@
   function startAnalogueClock() {
     var canvas = document.getElementById('analogue-clock');
     if (!canvas) return;
+    // Idempotent: callers include tray-click + window-open hook + restore hook.
+    // Running two intervals would double-draw and double the work per tick.
+    if (analogueClockInterval) return;
     var ctx = canvas.getContext('2d');
     var w = canvas.width;
     var h = canvas.height;
@@ -908,7 +1206,7 @@
 
       // Update digital readout
       if (digitalEl) digitalEl.textContent = formatTime12h(syd) + ':' + (secs < 10 ? '0' : '') + secs;
-      if (dateEl) dateEl.textContent = syd.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      if (dateEl) dateEl.textContent = formatSydneyFullDate(syd);
       if (tzOffsetEl) {
         var isDST = syd.toLocaleString('en-US', { timeZone: TIMEZONE, timeZoneName: 'short' }).includes('DT');
         tzOffsetEl.textContent = isDST ? 'AEDT (UTC+11:00)' : 'AEST (UTC+10:00)';
@@ -957,11 +1255,11 @@
   }
 
   function localFallbackCount() {
-    var count = parseInt(localStorage.getItem('visitor-count')) || 3;
-    if (!sessionStorage.getItem('counted')) {
+    var count = parseInt(safeRead('localStorage', 'visitor-count')) || 3;
+    if (!safeRead('sessionStorage', 'counted')) {
       count++;
-      sessionStorage.setItem('counted', '1');
-      localStorage.setItem('visitor-count', count);
+      safeWrite('sessionStorage', 'counted', '1');
+      safeSet('visitor-count', count);
     }
     return formatCount(count);
   }
@@ -969,26 +1267,34 @@
   function initVisitorCounter() {
     if (!elVisitorCounter) return;
 
-    var cached = formatCount(localStorage.getItem(COUNTER_CACHE_KEY));
+    var cached = formatCount(safeRead('localStorage', COUNTER_CACHE_KEY));
     renderVisitorCount(cached || localFallbackCount());
 
     if (typeof fetch !== 'function') return;
 
     // Skip the network round-trip if we already fetched within the server cache window.
-    var fetchedAt = parseInt(sessionStorage.getItem(COUNTER_FETCHED_AT_KEY), 10);
+    var fetchedAt = parseInt(safeRead('sessionStorage', COUNTER_FETCHED_AT_KEY), 10);
     if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt < COUNTER_FETCH_TTL_MS) return;
 
-    fetch(COUNTER_URL)
+    // 8s timeout: long enough for a slow mobile network round-trip, short
+    // enough that hung captive-portal pages don't leave the request open
+    // forever. On timeout, the existing catch path keeps the cached/fallback
+    // display untouched.
+    var fetchOpts = {};
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      fetchOpts.signal = AbortSignal.timeout(8000);
+    }
+    fetch(COUNTER_URL, fetchOpts)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(data) {
         if (!data) return;
         var formatted = formatCount(data.count);
         if (!formatted) return;
-        localStorage.setItem(COUNTER_CACHE_KEY, formatted);
-        sessionStorage.setItem(COUNTER_FETCHED_AT_KEY, String(Date.now()));
+        safeSet(COUNTER_CACHE_KEY, formatted);
+        safeWrite('sessionStorage', COUNTER_FETCHED_AT_KEY, String(Date.now()));
         renderVisitorCount(formatted);
       })
-      .catch(function() { /* keep cached/fallback display */ });
+      .catch(function() { /* timeout or network error — keep cached/fallback display */ });
   }
 
   // --- System Tray Click Handlers ---
@@ -1013,7 +1319,7 @@
             win.el.style.left = 'auto';
             win.el.style.right = '80px';
             win.el.style.top = 'auto';
-            win.el.style.bottom = (TASKBAR_HEIGHT + 4) + 'px';
+            win.el.style.bottom = (getTaskbarHeight() + 4) + 'px';
             win.el.style.position = 'fixed';
           }
         }
@@ -1030,20 +1336,146 @@
         var win = windows.get('window-clock');
         if (win && (win.state === 'open' || win.state === 'maximized')) {
           closeWindow('window-clock');
-          stopAnalogueClock();
         } else {
+          // openWindow fires the windowOpenHooks['window-clock'] entry which
+          // starts the analogue clock, so no explicit call needed here.
           openWindow('window-clock');
-          startAnalogueClock();
           if (win && win.el) {
             win.el.style.left = 'auto';
             win.el.style.right = '4px';
             win.el.style.top = 'auto';
-            win.el.style.bottom = (TASKBAR_HEIGHT + 4) + 'px';
+            win.el.style.bottom = (getTaskbarHeight() + 4) + 'px';
             win.el.style.position = 'fixed';
           }
         }
       });
     }
+  }
+
+  // --- Win98 Hover Tooltips ---
+  // One reusable #win98-tooltip element, positioned + filled on hover. Bound
+  // only when the pointer can actually hover (desktop); phones report
+  // (hover: none) so nothing binds and no tooltip can ever show. Native title
+  // attributes are avoided because they can't be styled to match Win98.
+  var TOOLTIP_DELAY = 500;
+
+  // Tray speaker toggle: mutes/unmutes all system sounds and persists the
+  // choice. Default ENABLED (a null flag reads as on). Reflects state through
+  // aria-pressed (true = sound on) which the CSS keys off for the muted glyph.
+  function applySoundState(el, on) {
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    el.setAttribute('aria-label', on ? 'Sound on' : 'Sound off (muted)');
+    el.setAttribute('title', on ? 'Sound on' : 'Muted');
+    if (window.Sounds) window.Sounds.setSoundEnabled(on);
+  }
+
+  function initSoundToggle() {
+    var el = document.getElementById('tray-speaker');
+    if (!el) return;
+    el.style.cursor = 'default';
+
+    // Restore persisted preference (default ENABLED when unset).
+    applySoundState(el, safeRead('localStorage', 'sound-enabled') !== '0');
+
+    function toggle() {
+      var next = el.getAttribute('aria-pressed') !== 'true';
+      safeSet('sound-enabled', next ? '1' : '0');
+      applySoundState(el, next);
+    }
+
+    el.addEventListener('click', function(e) {
+      // Match the other tray items: close the Start menu and stop propagation
+      // so the desktop click delegator doesn't read this as a desktop tap.
+      closeStartMenuIfOpen();
+      e.stopPropagation();
+      toggle();
+    });
+    el.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+  }
+
+  function setupTooltips() {
+    var tooltipEl = document.getElementById('win98-tooltip');
+    if (!tooltipEl) return;
+    if (!(window.matchMedia && window.matchMedia('(hover: hover)').matches)) return;
+
+    var showTimer = null;
+    var currentTarget = null;
+
+    function positionAndShow(targetEl, text) {
+      var z = getZoom();
+      tooltipEl.textContent = text;
+      tooltipEl.classList.add('visible');
+      // Measure after making visible; getBoundingClientRect returns viewport
+      // (post-zoom) coordinates in the same space as clientX / innerWidth.
+      var tRect = tooltipEl.getBoundingClientRect();
+      var aRect = targetEl.getBoundingClientRect();
+      var gap = 2;
+      var x = aRect.left;
+      var y = aRect.bottom + gap;
+      // Flip above the target when it would overflow the bottom edge (the tray
+      // clock and quick-launch live in the taskbar at the bottom).
+      if (y + tRect.height > window.innerHeight) y = aRect.top - tRect.height - gap;
+      if (x + tRect.width > window.innerWidth) x = window.innerWidth - tRect.width - gap;
+      if (x < 0) x = gap;
+      if (y < 0) y = gap;
+      // CSS position lives in the pre-zoom coordinate space, so divide by zoom
+      // (same convention as showContextMenu).
+      tooltipEl.style.left = (x / z) + 'px';
+      tooltipEl.style.top = (y / z) + 'px';
+    }
+
+    function scheduleTooltip(targetEl, text) {
+      clearTimeout(showTimer);
+      showTimer = setTimeout(function() { positionAndShow(targetEl, text); }, TOOLTIP_DELAY);
+    }
+
+    function cancelTooltip() {
+      clearTimeout(showTimer);
+      tooltipEl.classList.remove('visible');
+      currentTarget = null;
+    }
+
+    // Resolve a hovered node to its tooltip host + text, or null.
+    function tooltipSourceFor(el) {
+      if (!el || !el.closest) return null;
+      var clock = el.closest('#clock');
+      if (clock) return { el: clock, text: formatSydneyFullDate(getSydneyTime()) };
+      var ql = el.closest('.quick-launch-btn');
+      if (ql) {
+        var img = ql.querySelector('img');
+        return { el: ql, text: (img && img.getAttribute('alt')) || '' };
+      }
+      var ctrl = el.closest('.title-bar-controls button');
+      if (ctrl) return { el: ctrl, text: ctrl.getAttribute('aria-label') || '' };
+      return null;
+    }
+
+    // Delegated over the whole document so per-window title-bar controls are
+    // covered without per-window wiring. pointerover/out bubble (unlike
+    // pointerenter/leave), so closest() dedupes moves within a target.
+    document.addEventListener('pointerover', function(e) {
+      var src = tooltipSourceFor(e.target);
+      if (!src || !src.text) return;
+      if (currentTarget === src.el) return;
+      currentTarget = src.el;
+      scheduleTooltip(src.el, src.text);
+    });
+
+    document.addEventListener('pointerout', function(e) {
+      if (!currentTarget) return;
+      // Ignore moves that stay inside the current target (e.g. button -> img).
+      if (e.relatedTarget && currentTarget.contains(e.relatedTarget)) return;
+      cancelTooltip();
+    });
+
+    // Any press dismisses the tooltip so it never lingers over an activated
+    // control (matches native Win98).
+    document.addEventListener('pointerdown', cancelTooltip);
   }
 
   // --- Icon Drag (rearrange desktop icons) ---
@@ -1067,7 +1499,7 @@
 
     var icons = elIconGrid.querySelectorAll('.desktop-icon');
     var saved = null;
-    try { saved = JSON.parse(localStorage.getItem('icon-positions')); } catch(e) {}
+    try { saved = JSON.parse(safeRead('localStorage', 'icon-positions')); } catch(e) {}
 
     var cellW = 80;
     var cellH = 90;
@@ -1097,7 +1529,7 @@
         }
       }
       if (anyOutOfBounds) {
-        try { localStorage.removeItem('icon-positions'); } catch (e) {}
+        safeRemove('localStorage', 'icon-positions');
         saved = null;
       }
     }
@@ -1127,11 +1559,17 @@
         y: parseInt(icon.style.top) || 0
       };
     });
-    localStorage.setItem('icon-positions', JSON.stringify(positions));
+    safeSet('icon-positions', JSON.stringify(positions));
   }
 
   function setupIconDrag() {
     elIconGrid.addEventListener('pointerdown', function(e) {
+      // Drag-to-rearrange is a desktop (mouse) affordance only. On phones icons
+      // are laid out by CSS grid (layoutIcons/saveIconPositions already no-op),
+      // and .desktop-icon is position:relative for the selection tint — so a
+      // drag's inline left/top would strand the icon off its cell on a >5px
+      // tap-drift. Never start an icon drag on mobile.
+      if (isMobile()) return;
       var icon = e.target.closest('.desktop-icon');
       if (!icon) return;
 
@@ -1183,7 +1621,7 @@
       }
     });
 
-    elIconGrid.addEventListener('pointerup', function(e) {
+    function endIconDrag(e) {
       if (!iconDragState.active) return;
 
       if (iconDragState.rafId) {
@@ -1194,23 +1632,25 @@
       if (iconDragState.iconEl) {
         iconDragState.iconEl.style.zIndex = '';
         iconDragState.iconEl.style.opacity = '';
-        iconDragState.iconEl.releasePointerCapture(e.pointerId);
+        try { iconDragState.iconEl.releasePointerCapture(e.pointerId); } catch (err) {}
       }
 
       if (iconDragState.moved) {
         saveIconPositions();
         // Suppress the click that would follow
         dragState.suppressClick = true;
-        iconDragState.iconEl = null;
-        iconDragState.active = false;
-        iconDragState.moved = false;
-        return;
       }
 
       iconDragState.iconEl = null;
       iconDragState.active = false;
       iconDragState.moved = false;
-    });
+    }
+
+    elIconGrid.addEventListener('pointerup', endIconDrag);
+    // pointercancel: same teardown as pointerup so an interrupted icon drag
+    // (iOS edge-swipe, system gesture) doesn't strand the icon at opacity 0.7
+    // or block subsequent clicks via the suppressClick latch.
+    elIconGrid.addEventListener('pointercancel', endIconDrag);
   }
 
   // --- Desktop Icon Events ---
@@ -1362,6 +1802,18 @@
       onDragEnd(e);
     });
 
+    // pointercancel fires when the browser revokes pointer capture mid-drag
+    // (iOS edge-swipe, Android back gesture, OS popups, multi-touch).
+    // Without this, dragState.windowId stays set and the next click anywhere
+    // gets eaten by the suppressClick guard.
+    elDesktop.addEventListener('pointercancel', function(e) {
+      if (resizeState.active) {
+        onResizeEnd(e);
+        return;
+      }
+      if (dragState.windowId) onDragEnd(e);
+    });
+
     // Taskbar clicks
     elTaskbar.addEventListener('click', function(e) {
       var btn = e.target.closest('[data-window-id]');
@@ -1408,6 +1860,8 @@
         openWindow(windowId);
       } else if (action === 'shutdown') {
         openWindow('window-shutdown');
+      } else if (action === 'logoff') {
+        openWindow('window-logoff');
       } else if (app) {
         var launcher = getAppLaunchers()[app];
         if (launcher) launcher();
@@ -1431,6 +1885,10 @@
     // Shutdown OK button
     var shutdownOk = document.getElementById('shutdown-ok');
     if (shutdownOk) shutdownOk.addEventListener('click', handleShutdown);
+
+    // Log Off Yes button
+    var logoffOk = document.getElementById('logoff-ok');
+    if (logoffOk) logoffOk.addEventListener('click', handleLogOff);
 
     // Global click for start menu
     document.addEventListener('click', handleGlobalClick);
@@ -1597,6 +2055,37 @@
     return window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches;
   }
 
+  // Portrait phones only — touch input AND a narrow (<480px) viewport.
+  // Deliberately tighter than isMobile() (max-width 767): landscape phones
+  // (480-767px) fall outside it and keep the floating-cascade behavior
+  // untouched, so maximize-by-default never fires on a wide phone.
+  function isPortraitPhone() {
+    return window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 479px)').matches;
+  }
+
+  // Center a fixed-size dialog in the viewport. Portrait phones are too
+  // narrow for the cascade offset (a 340px dialog at left:30 runs off the
+  // right edge), so dialogs that opt out of maximize-by-default open centered,
+  // matching how Win98 centers its dialogs. Same pre-zoom/post-zoom unit
+  // conversion as clampWindowToViewport (getBoundingClientRect is post-zoom;
+  // style writes are pre-zoom). Called after data-state flips to 'open' so the
+  // measured rect is real.
+  function centerWindowInViewport(winEl) {
+    if (!winEl) return;
+    var z = getZoom();
+    var rect = winEl.getBoundingClientRect();
+    var cs = getComputedStyle(winEl);
+    // The mobile .window carries a --window-margin (4px). style.left positions
+    // the margin edge, so subtract the margin to center the visible border-box.
+    var marginL = parseFloat(cs.marginLeft) || 0;
+    var marginT = parseFloat(cs.marginTop) || 0;
+    var vw = window.innerWidth / z;
+    var vh = window.innerHeight / z;
+    var taskbarH = getTaskbarHeightCss(z);
+    winEl.style.left = Math.max(4, (vw - rect.width / z) / 2 - marginL) + 'px';
+    winEl.style.top = Math.max(4, (vh - taskbarH - rect.height / z) / 2 - marginT) + 'px';
+  }
+
   // U4: Clamp a window's left/top so its right/bottom edge stays inside the
   // viewport. Called after openWindow sets the cascade position on mobile;
   // CSS max-width has already clamped the rendered width via the .window
@@ -1605,22 +2094,25 @@
   // (viewport.w - 4) and y + h fits within (viewport.h - taskbar - 4).
   function clampWindowToViewport(winEl) {
     if (!winEl) return;
+    // All persisted geometry (style.left/top/width/height) lives in pre-zoom
+    // CSS units. getBoundingClientRect() and window.innerWidth/innerHeight
+    // return post-zoom device units. Convert reads into CSS units before
+    // mixing them with style writes — otherwise tablets (body { zoom: 1.5 })
+    // get a clamp value off by a factor of zoom.
+    var z = getZoom();
     var rect = winEl.getBoundingClientRect();
-    var vw = window.innerWidth;
-    var vh = window.innerHeight;
-    // Read the computed taskbar floor (44px on touch) rather than the
-    // desktop 28 — the touch CSS overrides --taskbar-height implicitly via
-    // --taskbar-min-height, so the bottom inset must match what's on-screen.
-    var taskbarEl = document.getElementById('taskbar');
-    var taskbarH = taskbarEl ? taskbarEl.getBoundingClientRect().height : TASKBAR_HEIGHT;
+    var rectW = rect.width / z;
+    var rectH = rect.height / z;
+    var vw = window.innerWidth / z;
+    var vh = window.innerHeight / z;
+    var taskbarH = getTaskbarHeightCss(z);
     var pad = 4;
-    var maxLeft = Math.max(pad, vw - rect.width - pad);
-    var maxTop = Math.max(pad, vh - taskbarH - rect.height - pad);
+    var maxLeft = Math.max(pad, vw - rectW - pad);
+    var maxTop = Math.max(pad, vh - taskbarH - rectH - pad);
     var curLeft = parseInt(winEl.style.left, 10) || 0;
     var curTop = parseInt(winEl.style.top, 10) || 0;
     if (curLeft > maxLeft) winEl.style.left = maxLeft + 'px';
     if (curTop > maxTop) winEl.style.top = maxTop + 'px';
-    // Also clamp to a non-negative origin in case left/top went < pad.
     if ((parseInt(winEl.style.left, 10) || 0) < pad) winEl.style.left = pad + 'px';
     if ((parseInt(winEl.style.top, 10) || 0) < pad) winEl.style.top = pad + 'px';
   }
@@ -1657,37 +2149,34 @@
   // after the crossing could place it off-screen.
   function onViewportChange() {
     var currentZoom = getZoom();
+    var vw = window.innerWidth / currentZoom;
+    var vh = window.innerHeight / currentZoom;
 
-    // Always: clamp open windows to the new viewport. Maximized windows are
-    // pinned by CSS so the clamp is effectively a no-op for them; restrict
-    // the work to 'open' state windows to avoid disturbing maximized layout.
+    // Always: clamp open windows AND rewrite every window's prevRect snapshot
+    // into the new viewport's CSS-pixel coordinate space. The prevRect rewrite
+    // must run on every viewport change (phone rotation keeps zoom constant,
+    // so the zoom-crossing branch never fires on phones), otherwise
+    // toggleMaximize → restore can land the window off-screen.
     windows.forEach(function(win) {
       if (!win || !win.el) return;
-      if (win.state !== 'open') return;
-      clampWindowToViewport(win.el);
-    });
-
-    // Only on zoom-change crossings: rewrite persisted state for the new
-    // coordinate space.
-    if (lastZoom !== null && currentZoom !== lastZoom) {
-      var vw = window.innerWidth;
-      var vh = window.innerHeight;
-      windows.forEach(function(win) {
-        if (!win || !win.prevRect) return;
+      if (win.state === 'open') {
+        clampWindowToViewport(win.el);
+      }
+      if (win.prevRect) {
         win.prevRect.x = Math.max(0, Math.min(win.prevRect.x, vw - DRAG_EDGE_MARGIN_X));
         win.prevRect.y = Math.max(0, Math.min(win.prevRect.y, vh - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
         win.prevRect.w = Math.min(win.prevRect.w, vw);
         win.prevRect.h = Math.min(win.prevRect.h, vh - TASKBAR_HEIGHT);
-      });
-      try { localStorage.removeItem('icon-positions'); } catch (e) {}
+      }
+    });
+
+    // Only on zoom-change crossings: discard persisted icon positions so icons
+    // reflow under the CSS-driven mobile layout for the new mode.
+    if (lastZoom !== null && currentZoom !== lastZoom) {
+      safeRemove('localStorage', 'icon-positions');
     }
 
-    // Re-arrange icons on every viewport change. layoutIcons() validates
-    // saved positions against the new bounds — if any fall outside, the
-    // whole saved state is discarded and icons reflow from scratch. This
-    // is the automatic equivalent of right-click → Arrange Icons.
     layoutIcons();
-
     lastZoom = currentZoom;
   }
 
@@ -1716,7 +2205,6 @@
 
   // --- Generate Desktop Icons + Project Windows ---
   function generateProjects() {
-    var template = document.getElementById('project-window-template');
     var startMenuProjects = document.getElementById('start-menu-projects');
 
     // System icons FIRST (My Computer, Recycle Bin, About Me, etc.)
@@ -1810,49 +2298,6 @@
       } else if (project.type === 'link') {
         // External link — no window, just open URL on double-click
         // We'll handle this in the icon click handler
-      } else {
-        // Standard project window from template
-        var clone = template.content.cloneNode(true);
-        var winEl = clone.querySelector('.window');
-        winEl.id = id;
-        winEl.setAttribute('aria-labelledby', 'title-' + project.id);
-        var titleText = clone.querySelector('.title-bar-text');
-        titleText.id = 'title-' + project.id;
-        titleText.textContent = project.title;
-        var desc = clone.querySelector('.project-description');
-        desc.textContent = project.description;
-        var techStack = clone.querySelector('.tech-stack');
-        project.tech.forEach(function(t) {
-          var pill = document.createElement('span');
-          pill.className = 'tech-pill';
-          pill.textContent = t;
-          techStack.appendChild(pill);
-        });
-        var links = clone.querySelector('.project-links');
-        if (project.url) {
-          var a = document.createElement('a');
-          a.href = project.url;
-          a.target = '_blank';
-          a.rel = 'noopener';
-          a.textContent = 'Visit';
-          links.appendChild(a);
-        }
-
-        var screenshot = clone.querySelector('.project-screenshot');
-        if (project.screenshot) {
-          screenshot.src = project.screenshot;
-          screenshot.alt = project.title + ' screenshot';
-          screenshot.width = 640;
-          screenshot.height = 400;
-        } else {
-          screenshot.remove();
-        }
-
-        var statusField = clone.querySelector('.status-bar-field');
-        statusField.textContent = 'Last updated: ' + project.updated;
-
-        elDesktop.appendChild(clone);
-        registerWindow(id, document.getElementById(id));
       }
 
       // Create desktop icon (for ALL project types)
@@ -1886,7 +2331,7 @@
 
       // Hide Cavaro icon if dismissed within 48h
       if (project.type === 'cavaro') {
-        var dismissed = parseInt(localStorage.getItem('cavaro-dismissed')) || 0;
+        var dismissed = parseInt(safeRead('localStorage', 'cavaro-dismissed')) || 0;
         var hoursSince = (Date.now() - dismissed) / (1000 * 60 * 60);
         if (dismissed > 0 && hoursSince < 48) {
           icon.style.display = 'none';
@@ -1958,6 +2403,11 @@
           sendBtn.disabled = true;
         }
 
+        // Snapshot the per-submit token. closeWindow('window-contact') bumps
+        // the token, so a user who closes-and-reopens the form mid-flight
+        // gets a fresh draft instead of an auto-reset 1.5s after success.
+        var myToken = ++contactSubmitToken;
+
         // Build JSON body — Formspree recommends JSON for AJAX
         var data = {
           email: form.querySelector('[name="email"]').value,
@@ -1965,17 +2415,25 @@
           message: form.querySelector('[name="message"]').value
         };
 
-        fetch(form.action, {
+        var fetchOpts = {
           method: 'POST',
           body: JSON.stringify(data),
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
           }
-        }).then(function(response) {
+        };
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+          fetchOpts.signal = AbortSignal.timeout(8000);
+        }
+
+        fetch(form.action, fetchOpts).then(function(response) {
           if (response.ok) {
             if (sendBtn) sendBtn.textContent = 'Message Sent!';
             setTimeout(function() {
+              // Stale-submit guard: window was closed (and possibly reopened
+              // by now) during the success delay — leave the new instance alone.
+              if (myToken !== contactSubmitToken) return;
               closeWindow('window-contact');
               form.reset();
               if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
@@ -1988,8 +2446,14 @@
               if (sendBtn) { sendBtn.textContent = 'Send Failed - Try Again'; sendBtn.disabled = false; }
             });
           }
-        }).catch(function() {
-          if (sendBtn) { sendBtn.textContent = 'Send Failed - Try Again'; sendBtn.disabled = false; }
+        }).catch(function(err) {
+          if (!sendBtn) return;
+          if (err && err.name === 'TimeoutError') {
+            sendBtn.textContent = "Couldn't send — try again";
+          } else {
+            sendBtn.textContent = 'Send Failed - Try Again';
+          }
+          sendBtn.disabled = false;
         });
       });
     }
@@ -2071,7 +2535,7 @@
           case 'refresh': location.reload(); break;
           case 'properties': openWindow('window-my-computer'); break;
           case 'arrange-icons':
-            localStorage.removeItem('icon-positions');
+            safeRemove('localStorage', 'icon-positions');
             layoutIcons();
             break;
           case 'ctx-minimize':
@@ -2117,7 +2581,7 @@
   }
 
   // --- Selection Rectangle ---
-  var selectionState = { active: false, startX: 0, startY: 0, rafId: null };
+  var selectionState = { active: false, startX: 0, startY: 0, rafId: null, pointerId: null };
   var elSelectionRect;
 
   function setupSelectionRect() {
@@ -2129,16 +2593,26 @@
       if (e.target !== elDesktop && e.target !== elIconGrid) return;
       if (e.button !== 0) return;
 
+      var z = getZoom();
       var rect = elDesktop.getBoundingClientRect();
+      // Rect lives inside body { zoom: 1.5 } on iPads; pointer coords are in
+      // viewport pixels. Divide by zoom so the rect renders where the finger
+      // actually is instead of 1.5× away.
       selectionState.active = true;
-      selectionState.startX = e.clientX - rect.left;
-      selectionState.startY = e.clientY - rect.top;
+      selectionState.startX = (e.clientX - rect.left) / z;
+      selectionState.startY = (e.clientY - rect.top) / z;
+      selectionState.pointerId = e.pointerId;
 
       elSelectionRect.style.left = selectionState.startX + 'px';
       elSelectionRect.style.top = selectionState.startY + 'px';
       elSelectionRect.style.width = '0';
       elSelectionRect.style.height = '0';
       elSelectionRect.style.display = 'block';
+
+      // Capture the pointer so we receive pointerup/pointercancel even if
+      // the finger drifts outside #desktop before release — otherwise the
+      // rect can get stranded visible.
+      try { elDesktop.setPointerCapture(e.pointerId); } catch (err) {}
     });
 
     elDesktop.addEventListener('pointermove', function(e) {
@@ -2146,9 +2620,10 @@
       // Don't interfere with window drag
       if (dragState.windowId) { selectionState.active = false; elSelectionRect.style.display = 'none'; return; }
 
+      var z = getZoom();
       var rect = elDesktop.getBoundingClientRect();
-      var curX = e.clientX - rect.left;
-      var curY = e.clientY - rect.top;
+      var curX = (e.clientX - rect.left) / z;
+      var curY = (e.clientY - rect.top) / z;
 
       var x = Math.min(selectionState.startX, curX);
       var y = Math.min(selectionState.startY, curY);
@@ -2161,7 +2636,7 @@
       elSelectionRect.style.height = h + 'px';
     });
 
-    elDesktop.addEventListener('pointerup', function(e) {
+    function endSelection(e) {
       if (!selectionState.active) return;
       selectionState.active = false;
 
@@ -2182,7 +2657,18 @@
       }
 
       elSelectionRect.style.display = 'none';
-    });
+
+      if (selectionState.pointerId != null) {
+        try { elDesktop.releasePointerCapture(selectionState.pointerId); } catch (err) {}
+        selectionState.pointerId = null;
+      }
+    }
+
+    elDesktop.addEventListener('pointerup', endSelection);
+    // pointercancel: iOS/Android system gestures revoke capture without a
+    // matching pointerup — without this the rect stays visible until the
+    // next pointerdown.
+    elDesktop.addEventListener('pointercancel', endSelection);
   }
 
   // --- Cascading Submenus ---
@@ -2320,14 +2806,37 @@
       overlay.innerHTML = '<div>It\'s now safe to turn off<br>your computer.</div>';
       document.body.appendChild(overlay);
       setTimeout(function() {
-        sessionStorage.removeItem('booted');
+        safeRemove('sessionStorage', 'booted');
         location.reload();
       }, 3000);
     } else if (option.id === 'sd-restart' || option.id === 'sd-dos') {
-      sessionStorage.removeItem('booted');
-      localStorage.removeItem('cavaro-dismissed');
+      safeRemove('sessionStorage', 'booted');
+      safeRemove('localStorage', 'cavaro-dismissed');
       location.reload();
     }
+  }
+
+  // --- Log Off ---
+  // Fake log-off: no session state changes. Tears every window down through
+  // the real closeWindow path (clock stop, cleanups, taskbar chip removal) so
+  // nothing stale is left behind — unlike showDesktop/minimize-all, which keep
+  // the taskbar chips. The open logoff dialog is itself an open window, so this
+  // closes it too.
+  function handleLogOff() {
+    closeAllWindows();
+    elStartMenu.classList.remove('open');
+    elStartButton.setAttribute('aria-expanded', 'false');
+  }
+
+  // Close every non-closed window (open/maximized/minimized) via closeWindow so
+  // each gets its full teardown. IDs are snapshotted first because closeWindow
+  // deletes transient windows from the map mid-iteration.
+  function closeAllWindows() {
+    var ids = [];
+    windows.forEach(function(win, id) {
+      if (win.state !== 'closed') ids.push(id);
+    });
+    ids.forEach(function(id) { closeWindow(id); });
   }
 
   // --- Quick Launch: Show Desktop ---
@@ -2392,7 +2901,11 @@
           '<img src="img/icons/paint-sm.png" alt="" class="paint-mobile-note-icon">' +
           '<p>Paint runs best on a desktop with a mouse — open this site on a larger screen for the full experience.</p>' +
         '</div>'
-      : '<iframe src="https://jspaint.app" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
+      // sandbox set conservatively — re-evaluate if jspaint breaks. Omits
+      // allow-top-navigation so the embedded app can't redirect the host
+      // page. allow-popups + allow-popups-to-escape-sandbox cover the
+      // "Open file in new tab" affordance some jspaint plugins use.
+      : '<iframe src="https://jspaint.app" sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox allow-forms" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
     createAppWindow('window-paint', 'untitled - Paint', paintBody,
       { width: '640px', height: '480px', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;' });
   }
@@ -2412,9 +2925,11 @@
     createAppWindow('window-minesweeper', 'Minesweeper', msHtml,
       { width: '250px', noResize: true, bodyStyle: 'padding:4px;margin:0;background:#c0c0c0;' });
 
-    var script = document.createElement('script');
-    script.src = 'apps/minesweeper/game.js';
-    document.getElementById('ms-app').appendChild(script);
+    // Load script once per page, then call init every launch. The init
+    // is internally idempotent (wires handlers on first call only) and
+    // always starts a fresh game.
+    function runInit() { if (window.__initMinesweeper) window.__initMinesweeper(); }
+    loadAppScriptOnce('minesweeper', 'apps/minesweeper/game.js', runInit);
   }
 
   // Lazy-load apps/help/book.js on first launch. The file is ~63KB of static
@@ -2434,9 +2949,21 @@
     return bookLoadPromise;
   }
 
+  // Set to true once renderHelpBook has wired the current help-book window.
+  // Cleared in closeWindow so a fresh open reinitialises page state. Without
+  // this, two rapid launches that share the in-flight ensureBookLoaded promise
+  // would both .then(render), and the second .then would clobber any nav
+  // state established by the first.
+  var helpBookRendered = false;
+
   function launchHelpBook() {
-    ensureBookLoaded().then(renderHelpBook).catch(function() {
-      // Soft failure: open the window with a placeholder so the user sees something.
+    ensureBookLoaded().then(function() {
+      if (helpBookRendered && document.getElementById('window-help-book')) {
+        openWindow('window-help-book');
+        return;
+      }
+      renderHelpBook();
+    }).catch(function() {
       renderHelpBook(['<p style="padding:20px;color:#800000;">Help content failed to load. Please check your connection and try again.</p>']);
     });
   }
@@ -2486,6 +3013,7 @@
       bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;'
     });
     render();
+    helpBookRendered = true;
   }
 
   function launchCalculator() {
@@ -2526,9 +3054,11 @@
     createAppWindow('window-calculator', 'Calculator', calcHtml,
       { width: '240px', noResize: true, bodyStyle: 'padding:4px;margin:0;background:#c0c0c0;' });
 
-    var script = document.createElement('script');
-    script.src = 'apps/calculator/calc.js';
-    document.getElementById('calc-app').appendChild(script);
+    // Same pattern as Minesweeper. Previously the calc script attached a
+    // fresh global keydown handler on every launch, so after N opens a
+    // single keystroke fired N button clicks.
+    function runInit() { if (window.__initCalculator) window.__initCalculator(); }
+    loadAppScriptOnce('calculator', 'apps/calculator/calc.js', runInit);
   }
 
   function launchNotepad() {
@@ -2569,92 +3099,98 @@
   }
 
   function launchNapster() {
-    var tabNames = ['Search', 'Library', 'Transfer'];
-    var tabsHtml = '<menu role="tablist" class="napster-tabs">';
-    tabNames.forEach(function(name, idx) {
-      tabsHtml += '<li role="tab" aria-selected="' + (idx === 0 ? 'true' : 'false') +
-        '" aria-controls="napster-panel-' + name.toLowerCase() + '">' + name + '</li>';
-    });
-    tabsHtml += '</menu>';
+    // Early-exit if the window already exists: createAppWindow re-opens
+    // existing windows but runInit would otherwise stack a fresh set of
+    // tab/tbody listeners on every relaunch — after 5 opens, one
+    // double-click would open 5 tabs.
+    var existingNap = document.getElementById('window-napster');
+    if (existingNap) { openWindow('window-napster'); return; }
 
-    var searchPanel =
-      '<div role="tabpanel" id="napster-panel-search" class="napster-panel" style="display:flex;">' +
-        '<div class="napster-search-bar">' +
-          '<label for="napster-search-input">Search:</label>' +
-          '<input type="text" id="napster-search-input" value="Artist" placeholder="Enter artist or song name">' +
-          '<button id="napster-find-btn">Find It!</button>' +
-        '</div>' +
-        '<div class="napster-results-wrap">' +
-          '<table class="napster-results">' +
-            '<thead><tr>' +
-              '<th>Song</th><th>Artist</th><th>Size</th><th>Bitrate</th><th>User</th><th>Connection</th>' +
-            '</tr></thead>' +
-            '<tbody id="napster-results-body">' +
-              buildNapsterSearchResults() +
-            '</tbody>' +
-          '</table>' +
-        '</div>' +
-      '</div>';
-
-    var libraryPanel =
-      '<div role="tabpanel" id="napster-panel-library" class="napster-panel" style="display:none;">' +
-        '<div class="napster-library-empty">Your shared folder is empty</div>' +
-      '</div>';
-
-    var transferPanel =
-      '<div role="tabpanel" id="napster-panel-transfer" class="napster-panel" style="display:none;">' +
-        '<div class="napster-transfer-list">' +
-          buildNapsterTransfers() +
-        '</div>' +
-      '</div>';
-
-    var bodyHtml =
-      tabsHtml +
-      '<div class="napster-panel-area">' +
-        searchPanel + libraryPanel + transferPanel +
-      '</div>' +
-      '<div class="status-bar napster-status"><p class="status-bar-field">8,342 users sharing 1,247,382 files</p></div>';
-
-    createAppWindow('window-napster', 'Napster v2.0 BETA 7', bodyHtml,
-      { width: '520px', height: '420px', bodyStyle: 'padding:4px;background:var(--win98-silver);display:flex;flex-direction:column;overflow:hidden;' });
-
-    // Wire tab switching
-    var napWin = document.getElementById('window-napster');
-    if (!napWin) return;
-    var tabs = napWin.querySelectorAll('.napster-tabs [role="tab"]');
-    var panels = napWin.querySelectorAll('[role="tabpanel"]');
-    tabs.forEach(function(tab) {
-      tab.addEventListener('click', function() {
-        tabs.forEach(function(t) { t.setAttribute('aria-selected', 'false'); });
-        panels.forEach(function(p) { p.style.display = 'none'; });
-        tab.setAttribute('aria-selected', 'true');
-        var panelId = tab.getAttribute('aria-controls');
-        var panel = document.getElementById(panelId);
-        if (panel) panel.style.display = 'flex';
+    function runInit() {
+      // Readiness guard, matching the calculator/minesweeper launchers: a
+      // second launch while napster.js is still fetching (or after a failed
+      // load) must be a no-op, not a ReferenceError from the calls below.
+      if (typeof buildNapsterSearchResults !== 'function') return;
+      // bodyHtml construction depends on buildNapsterSearchResults /
+      // buildNapsterTransfers, which live in napster.js — so the whole
+      // build-and-wire flow has to run after the script loads.
+      var tabNames = ['Search', 'Library', 'Transfer'];
+      var tabsHtml = '<menu role="tablist" class="napster-tabs">';
+      tabNames.forEach(function(name, idx) {
+        tabsHtml += '<li role="tab" aria-selected="' + (idx === 0 ? 'true' : 'false') +
+          '" aria-controls="napster-panel-' + name.toLowerCase() + '">' + name + '</li>';
       });
-    });
+      tabsHtml += '</menu>';
 
-    // Wire row double-click to open URL
-    var tbody = document.getElementById('napster-results-body');
-    if (tbody) {
-      tbody.addEventListener('dblclick', function(e) {
-        var row = e.target.closest('.napster-row');
-        if (row && row.dataset.url) {
-          window.open(row.dataset.url, '_blank', 'noopener');
-        }
-      });
-      // Single click selects
-      tbody.addEventListener('click', function(e) {
-        var row = e.target.closest('.napster-row');
-        if (!row) return;
-        var prev = tbody.querySelector('[data-selected="true"]');
-        if (prev) prev.removeAttribute('data-selected');
-        row.setAttribute('data-selected', 'true');
-      });
+      var searchPanel =
+        '<div role="tabpanel" id="napster-panel-search" class="napster-panel" style="display:flex;">' +
+          '<div class="napster-search-bar">' +
+            '<label for="napster-search-input">Search:</label>' +
+            '<input type="text" id="napster-search-input" value="Artist" placeholder="Enter artist or song name">' +
+            '<button id="napster-find-btn">Find It!</button>' +
+          '</div>' +
+          '<div class="napster-results-wrap">' +
+            '<table class="napster-results">' +
+              '<thead><tr>' +
+                '<th>Song</th><th>Artist</th><th>Size</th><th>Bitrate</th><th>User</th><th>Connection</th>' +
+              '</tr></thead>' +
+              '<tbody id="napster-results-body">' +
+                buildNapsterSearchResults() +
+              '</tbody>' +
+            '</table>' +
+          '</div>' +
+        '</div>';
+
+      var libraryPanel =
+        '<div role="tabpanel" id="napster-panel-library" class="napster-panel" style="display:none;">' +
+          '<div class="napster-library-empty">Your shared folder is empty</div>' +
+        '</div>';
+
+      var transferPanel =
+        '<div role="tabpanel" id="napster-panel-transfer" class="napster-panel" style="display:none;">' +
+          '<div class="napster-transfer-list">' +
+            buildNapsterTransfers() +
+          '</div>' +
+        '</div>';
+
+      var bodyHtml =
+        tabsHtml +
+        '<div class="napster-panel-area">' +
+          searchPanel + libraryPanel + transferPanel +
+        '</div>' +
+        '<div class="status-bar napster-status"><p class="status-bar-field">8,342 users sharing 1,247,382 files</p></div>';
+
+      createAppWindow('window-napster', 'Napster v2.0 BETA 7', bodyHtml,
+        { width: '520px', height: '420px', bodyStyle: 'padding:4px;background:var(--win98-silver);display:flex;flex-direction:column;overflow:hidden;' });
+
+      if (window.__initNapster) window.__initNapster();
     }
+
+    loadAppScriptOnce('napster', 'apps/napster/napster.js', runInit);
   }
 
   function launchMatrixTerminal() {
+    // Idempotent re-launch: don't re-schedule the chained sequence on a
+    // window that's already running it (open, maximized, or minimized).
+    // A CLOSED Matrix window keeps its element in the DOM (not transient),
+    // so for that case fall through and replay the intro — after resetting
+    // the stale text/canvas left over from the previous run.
+    var existingMatrix = document.getElementById('window-matrix');
+    var matrixWin = windows.get('window-matrix');
+    if (existingMatrix && matrixWin && matrixWin.state !== 'closed') {
+      openWindow('window-matrix');
+      return;
+    }
+    if (existingMatrix) {
+      var staleText = document.getElementById('matrix-text');
+      var staleCanvas = document.getElementById('matrix-canvas');
+      if (staleText) { staleText.style.display = ''; staleText.innerHTML = ''; }
+      if (staleCanvas) {
+        if (staleCanvas._rafId) { cancelAnimationFrame(staleCanvas._rafId); staleCanvas._rafId = null; }
+        staleCanvas.style.display = 'none';
+      }
+    }
+
     createAppWindow('window-matrix', 'C:\\WINDOWS\\system32\\cmd.exe',
       '<div id="matrix-terminal" style="background:#000;color:#00FF00;font-family:\'Perfect DOS VGA 437\',\'Lucida Console\',monospace;font-size:14px;padding:8px;height:100%;position:relative;overflow:hidden;">' +
         '<div id="matrix-text"></div>' +
@@ -2669,10 +3205,22 @@
 
     var CURSOR = '<span style="animation:dos-cursor-blink 1s step-end infinite;">_</span>';
 
+    // Track every timer/interval so closeWindow can stop the chain mid-flight.
+    // Without this, closing during the 3s/3s/3s/4s hold leaks the pending
+    // setTimeouts and the typeText setInterval onto detached DOM nodes.
+    function track(setFn, fn, ms) {
+      var id = setFn(fn, ms);
+      registerCleanup('window-matrix', function() {
+        if (setFn === setTimeout) clearTimeout(id);
+        else clearInterval(id);
+      });
+      return id;
+    }
+
     function typeText(text, callback) {
       textEl.innerHTML = '';
       var i = 0;
-      var interval = setInterval(function() {
+      var interval = track(setInterval, function() {
         if (i < text.length) {
           textEl.innerHTML = text.substring(0, i + 1) + CURSOR;
           i++;
@@ -2686,17 +3234,23 @@
 
     // Phase 1: type "..." then hold 3 seconds
     typeText('...', function() {
-      setTimeout(function() {
+      track(setTimeout, function() {
         // Phase 2: type "Knock, knock, Neo." then hold 3 seconds
         typeText('Knock, knock, Neo.', function() {
-          setTimeout(function() {
+          track(setTimeout, function() {
             // Phase 3: type "..." then hold 4 seconds
             typeText('...', function() {
-              setTimeout(function() {
-                // Phase 4: Matrix rain
+              track(setTimeout, function() {
+                // Phase 4: Matrix rain. Skip the start if the window was
+                // minimized mid-intro — rAF keeps firing for display:none
+                // windows, so starting here would burn CPU on a hidden
+                // canvas. The restore hook (canvas shown && !_rafId) starts
+                // the rain on restore instead.
                 textEl.style.display = 'none';
                 canvasEl.style.display = 'block';
-                if (window.startMatrixRain) {
+                var mw = windows.get('window-matrix');
+                var visible = mw && (mw.state === 'open' || mw.state === 'maximized');
+                if (visible && window.startMatrixRain) {
                   window.startMatrixRain(canvasEl);
                 }
               }, 4000);
@@ -2748,6 +3302,12 @@
         '</div>' +
       '</div>';
 
+    // First-launch detection: capture whether the window existed before
+    // createAppWindow runs so we only apply the default right-anchored
+    // position once. Without this, every relaunch overwrote a manually
+    // dragged position.
+    var preExisting = !!document.getElementById('window-icq');
+
     createAppWindow('window-icq', 'ICQ', icqHtml, {
       width: '170px',
       height: '400px',
@@ -2755,10 +3315,14 @@
       bodyStyle: 'padding:0;overflow:hidden;display:flex;flex-direction:column;'
     });
 
-    // Position toward the right side of the desktop
+    if (preExisting) return;
+
+    // Position toward the right side of the desktop. Divide by body zoom
+    // (1.5 on iPads) so the window doesn't snap off-screen on tablets.
     var win = document.getElementById('window-icq');
     if (win) {
-      win.style.left = Math.max(0, window.innerWidth - 220) + 'px';
+      var z = getZoom();
+      win.style.left = Math.max(0, (window.innerWidth / z) - 220) + 'px';
       win.style.top = '40px';
     }
   }
@@ -2791,6 +3355,8 @@
     initContactForm();
     initMyComputer();
     setupSystemTrayClicks();
+    initSoundToggle();
+    setupTooltips();
     setupContextMenus();
     setupSelectionRect();
     initSubmenus();
@@ -2810,6 +3376,28 @@
     // the 768px zoom boundary.
     lastZoom = getZoom();
     bindViewportChangeHandler();
+
+    // Per-window lifecycle hooks. Clock interval and Matrix RAF cost real
+    // CPU when the window is hidden; pause them on minimize and resume on
+    // restore. Hash deep-link to #window-clock needs startAnalogueClock to
+    // fire from openWindow (the tray click path called it directly before).
+    windowOpenHooks['window-clock'] = startAnalogueClock;
+    windowMinimizeHooks['window-clock'] = stopAnalogueClock;
+    windowRestoreHooks['window-clock'] = startAnalogueClock;
+
+    windowMinimizeHooks['window-matrix'] = function() {
+      var c = document.getElementById('matrix-canvas');
+      if (c && c._rafId) {
+        cancelAnimationFrame(c._rafId);
+        c._rafId = null;
+      }
+    };
+    windowRestoreHooks['window-matrix'] = function() {
+      var c = document.getElementById('matrix-canvas');
+      if (c && c.style.display !== 'none' && window.startMatrixRain && !c._rafId) {
+        window.startMatrixRain(c);
+      }
+    };
 
     // Apply hash on load
     applyHashState();

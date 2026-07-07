@@ -28,7 +28,10 @@ const { test, expect } = require('@playwright/test');
 
 async function openAboutWindow(page) {
   await page.evaluate(() => { window.location.hash = '#window-about'; });
-  await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+  // R9: About is in MAXIMIZE_DEFAULT — on a portrait phone it opens maximized.
+  // The title-bar controls (Close / Minimize / Maximize) and their hit areas
+  // are identical in the maximized state; maximize only repositions the window.
+  await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
 }
 
 test.describe('Mobile title-bar controls', () => {
@@ -51,10 +54,33 @@ test.describe('Mobile title-bar controls', () => {
     await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'minimized');
   });
 
-  test('B1: tapping Maximize fills the viewport', async ({ page }) => {
+  test('B1: Maximize control toggles restore, then re-maximize fills the viewport', async ({ page }) => {
+    // R9: About opens maximized on a portrait phone (asserted by the helper),
+    // so the first tap on the Maximize control RESTORES it to a floating,
+    // on-screen window; the second tap MAXIMIZES it again. This preserves the
+    // original "tapping Maximize fills the viewport" proof (the re-maximize leg)
+    // while covering the new restore direction the maximize-by-default introduces.
     await openAboutWindow(page);
-    await page.locator('#window-about [aria-label="Maximize"]').tap();
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
+    const about = page.locator('#window-about');
+    const maximizeBtn = about.locator('[aria-label="Maximize"]');
+
+    // Restore → floating, reachable (title bar within the viewport).
+    await maximizeBtn.tap();
+    await expect(about).toHaveAttribute('data-state', 'open');
+    const vp = page.viewportSize();
+    const bar = await about.locator('.title-bar').boundingBox();
+    expect(bar).not.toBeNull();
+    const visibleW = Math.min(bar.x + bar.width, vp.width) - Math.max(bar.x, 0);
+    expect(visibleW).toBeGreaterThanOrEqual(44);
+
+    // Re-maximize → fills the viewport width and the height above the taskbar.
+    await maximizeBtn.tap();
+    await expect(about).toHaveAttribute('data-state', 'maximized');
+    const box = await about.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.x).toBeLessThanOrEqual(1);
+    expect(box.y).toBeLessThanOrEqual(1);
+    expect(box.width).toBeGreaterThanOrEqual(vp.width - 2);
   });
 
   test('B2: title-bar control buttons meet 30x30 hit-area floor', async ({ page }) => {

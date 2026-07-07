@@ -154,6 +154,24 @@ body {
   text-shadow: none;
 }
 
+/* Classic Win98 selection tint: a translucent navy wash over the icon art
+   (Win98 dithered the bitmap with the highlight colour at ~50%). The overlay
+   is clipped to the icon image box — top offset = cell padding, centred
+   horizontally — and sits above the img in paint order. pointer-events:none
+   so it never intercepts the icon click. Additive to the dotted outline. */
+.desktop-icon[data-selected="true"]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--icon-size);
+  height: var(--icon-size);
+  background: var(--win98-navy);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .desktop-icon:focus-visible {
   outline: 1px dotted var(--win98-white);
   outline-offset: -1px;
@@ -200,50 +218,6 @@ body {
   overflow: auto;
   background: var(--win98-white);
   flex: 1;
-}
-
-/* === Project Window Content === */
-.project-screenshot {
-  width: 100%;
-  max-width: 640px;
-  height: auto;
-  display: block;
-  margin-bottom: 8px;
-  border: 1px solid var(--win98-grey);
-}
-
-.project-description {
-  margin: 8px 0;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.tech-stack {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 8px 0;
-}
-
-.tech-pill {
-  background: var(--win98-silver);
-  border: 1px solid;
-  border-color: var(--win98-white) var(--win98-dark) var(--win98-dark) var(--win98-white);
-  box-shadow: inset 1px 1px var(--win98-light), inset -1px -1px var(--win98-grey);
-  padding: 1px 6px;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  font-size: 10px;
-}
-
-.project-links {
-  margin: 8px 0;
-}
-
-.project-links a {
-  margin-right: 12px;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  font-size: 11px;
 }
 
 /* === Taskbar === */
@@ -300,6 +274,12 @@ body {
 
 .taskbar-window-btn[aria-pressed="true"] {
   font-weight: bold;
+  /* 1px white/silver checkerboard: the active task's hatched dither over the
+     sunken bevel, the way Win98 marks the button belonging to the top window. */
+  background-image: repeating-conic-gradient(
+    var(--win98-white) 0% 25%,
+    var(--win98-silver) 0% 50%);
+  background-size: 2px 2px;
   box-shadow: inset -1px -1px var(--win98-white),
               inset 1px 1px var(--win98-dark),
               inset -2px -2px var(--win98-light),
@@ -312,9 +292,18 @@ body {
   gap: 6px;
   padding: 0 8px;
   height: 22px;
+  /* Sunken well: dark top/left + light bottom/right, the recessed notification
+     area of a real Win98 tray. */
+  box-shadow: inset 1px 1px var(--win98-grey),
+              inset -1px -1px var(--win98-white);
+  margin-left: auto;
+}
+
+/* Engraved groove between tray items (dark line + light highlight). */
+#system-tray > * + * {
+  padding-left: 6px;
   border-left: 1px solid var(--win98-grey);
   box-shadow: inset 1px 0 0 var(--win98-white);
-  margin-left: auto;
 }
 
 #visitor-counter,
@@ -326,6 +315,54 @@ body {
 #clock {
   min-width: 52px;
   text-align: center;
+}
+
+/* Tray speaker toggle — CSS-drawn (no image assets). The ::before is the
+   speaker cone silhouette; the ::after is the sound waves when on, swapped
+   for a red mute slash when off. Sized to sit inside the 22px tray well. */
+#tray-speaker {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: default;
+}
+#tray-speaker:focus-visible {
+  outline: 1px dotted var(--win98-black, #000);
+  outline-offset: 1px;
+}
+#tray-speaker::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 3px;
+  width: 8px;
+  height: 10px;
+  background: #000;
+  /* Speaker facing right: small body on the left, cone opening to the right. */
+  clip-path: polygon(0% 33%, 45% 33%, 100% 0%, 100% 100%, 45% 66%, 0% 66%);
+}
+/* Sound waves (on state): a right-facing arc drawn from a bordered box. */
+#tray-speaker::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 4px;
+  width: 4px;
+  height: 8px;
+  border: 1.5px solid #000;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+/* Muted (off state): drop the waves, overlay a red diagonal slash. */
+#tray-speaker[aria-pressed="false"]::after {
+  left: 2px;
+  top: 1px;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(45deg, transparent 42%, #d40000 42%, #d40000 58%, transparent 58%);
 }
 
 /* === Start Menu === */
@@ -617,7 +654,15 @@ body {
   /* Bare-background selection-rect handlers live on #desktop itself
      (see desktop.js:1914). Suppress pan on the background, but keep
      descendants free to manage their own touch behavior. */
-  #desktop { touch-action: none; }
+  #desktop {
+    touch-action: none;
+    /* Portrait wallpaper: the base `cover` rule jams the clouds/flag logo
+       into the bottom-right corner on a tall narrow screen. Dock the logo
+       bottom-center at a contain-style scale over the teal field so it
+       reads whole — below the icon grid, clear of the ~48px taskbar. */
+    background-size: 77% auto;
+    background-position: center bottom 52px;
+  }
   #desktop > .window { touch-action: auto; }
   /* .desktop-icon under #desktop > #icon-grid keeps touch-action: none from above. */
 
@@ -640,7 +685,9 @@ body {
     overflow: hidden;
   }
   .desktop-icon {
-    position: static;
+    /* relative (not static) so the selection-tint ::after has a containing
+       block; keeps the grid item in flow, no offset. */
+    position: relative;
     width: auto;
     min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
     min-height: 64px;
@@ -656,12 +703,20 @@ body {
     width: 28px;
     height: 28px;
   }
+  /* Selection tint tracks the scaled-down mobile art (28px, not --icon-size). */
+  .desktop-icon[data-selected="true"]::after {
+    width: 28px;
+    height: 28px;
+  }
   .desktop-icon-label {
     text-align: center;
     -webkit-line-clamp: 2;
     font-size: 11px;
     line-height: 1.2;
     max-width: 100%;
+    /* Reserve a fixed 2-line block so 1-line vs 2-line labels don't give
+       rows uneven vertical rhythm (2 lines × 1.2 line-height = 2.4em). */
+    min-height: 2.4em;
   }
 
   /* U3: taskbar — ≥44px hit targets per WCAG 2.5.5. Chip container
@@ -731,7 +786,10 @@ body {
      .has-submenu.submenu-open > .start-submenu pair. Overflow on the
      menu is hidden to clip the off-stage submenus. */
   #start-menu {
-    bottom: var(--taskbar-min-height);
+    /* Match the taskbar's actual height (min-height + 4px) so the menu
+       bottom rests flush on the taskbar instead of overlapping its top
+       edge. */
+    bottom: calc(var(--taskbar-min-height) + 4px);
     top: auto;
     left: 0;
     width: 70vw;
@@ -742,7 +800,10 @@ body {
     position: fixed;
   }
   .start-menu-items {
-    margin-left: 24px;
+    /* Zero the default <ul> vertical margin (the * reset only sets
+       box-sizing) so items fill the menu edge-to-edge — no dead silver
+       band above Programs or below Shut Down. */
+    margin: 0 0 0 24px;
     overflow-y: auto;
     max-height: calc(75vh - 4px);
     -webkit-overflow-scrolling: touch;
@@ -946,7 +1007,9 @@ body {
     overflow: hidden;
   }
   .desktop-icon {
-    position: static;
+    /* relative (not static) so the selection-tint ::after has a containing
+       block; keeps the grid item in flow, no offset. */
+    position: relative;
     width: auto;
     min-width: 0; /* hit-area floor met by grid track sizing, not min-width */
     min-height: 64px;
@@ -962,12 +1025,20 @@ body {
     width: 28px;
     height: 28px;
   }
+  /* Selection tint tracks the scaled-down mobile art (28px, not --icon-size). */
+  .desktop-icon[data-selected="true"]::after {
+    width: 28px;
+    height: 28px;
+  }
   .desktop-icon-label {
     text-align: center;
     -webkit-line-clamp: 2;
     font-size: 11px;
     line-height: 1.2;
     max-width: 100%;
+    /* Reserve a fixed 2-line block so 1-line vs 2-line labels don't give
+       rows uneven vertical rhythm (2 lines × 1.2 line-height = 2.4em). */
+    min-height: 2.4em;
   }
 
   /* U3: taskbar — same 44px floor as portrait. */
@@ -1022,7 +1093,10 @@ body {
      panel (still capped) so the slide-in submenu's full width feels
      spacious. Same back-affordance pattern as portrait. */
   #start-menu {
-    bottom: var(--taskbar-min-height);
+    /* Match the taskbar's actual height (min-height + 4px) so the menu
+       bottom rests flush on the taskbar instead of overlapping its top
+       edge. */
+    bottom: calc(var(--taskbar-min-height) + 4px);
     top: auto;
     left: 0;
     width: 50vw;
@@ -1033,7 +1107,10 @@ body {
     position: fixed;
   }
   .start-menu-items {
-    margin-left: 24px;
+    /* Zero the default <ul> vertical margin (the * reset only sets
+       box-sizing) so items fill the menu edge-to-edge — no dead silver
+       band above Programs or below Shut Down. */
+    margin: 0 0 0 24px;
     overflow-y: auto;
     max-height: calc(80vh - 4px);
     -webkit-overflow-scrolling: touch;
@@ -1250,6 +1327,27 @@ body {
   background: var(--win98-grey);
   margin: 2px 0;
   box-shadow: 0 1px 0 var(--win98-white);
+}
+
+/* === Win98 Tooltip (desktop hover affordance) === */
+#win98-tooltip {
+  position: fixed;
+  z-index: 9700;
+  display: none;
+  max-width: 320px;
+  padding: 1px 4px;
+  background: #ffffe1;
+  border: 1px solid var(--win98-black);
+  color: var(--win98-black);
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#win98-tooltip.visible {
+  display: block;
 }
 
 /* === Selection Rectangle === */

@@ -1,6 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter, attachConsoleGate, assertConsoleClean } = require('./_helpers');
+
+// Stub the analytics endpoints up-front so CI never hits gc.zgo.at /
+// reebz.goatcounter.com during this high-traffic suite. See tests/_helpers.js
+// for why this is partial-adoption rather than a fixture rewrite.
+test.beforeEach(async ({ page }) => {
+  await mockGoatCounter(page);
+});
 
 test.describe('BIOS Boot', () => {
   test('shows boot overlay on fresh visit', async ({ page }) => {
@@ -226,6 +234,66 @@ test.describe('Shut Down', () => {
     await shutdownBtn.click();
     await page.waitForTimeout(300);
     await expect(page.locator('#window-shutdown')).toBeVisible();
+  });
+});
+
+test.describe('Log Off', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.setItem('booted', '1'));
+    await page.goto('/');
+    await page.waitForTimeout(300);
+  });
+
+  test('Log Off sits directly above Shut Down and opens its dialog', async ({ page }) => {
+    await page.click('#start-button');
+    await page.waitForTimeout(200);
+
+    // Root-level menu labels in DOM order — Log Off must be the row directly
+    // above Shut Down (authentic Win98 Start-menu shape).
+    const labels = await page
+      .locator('#start-menu > .start-menu-items > li > button > .start-item-label')
+      .evaluateAll((els) => els.map((e) => e.textContent.trim()));
+    const logoffIdx = labels.findIndex((t) => /^Log Off/.test(t));
+    const shutdownIdx = labels.findIndex((t) => /^Shut Down/.test(t));
+    expect(logoffIdx).toBeGreaterThanOrEqual(0);
+    expect(shutdownIdx).toBe(logoffIdx + 1);
+
+    await page.locator('[data-action="logoff"]').click();
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-logoff')).toBeVisible();
+  });
+
+  test('Confirming Log Off closes all windows and their taskbar chips', async ({ page }) => {
+    const gate = attachConsoleGate(page);
+
+    // Open two windows (hash deep-links, so the first window's chrome can't
+    // intercept the second open); each gets a taskbar chip.
+    await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    await page.evaluate(() => { window.location.hash = '#window-my-computer'; });
+    await expect(page.locator('#window-my-computer')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('.taskbar-window-btn[data-window-id="window-guestbook"]')).toBeVisible();
+    await expect(page.locator('.taskbar-window-btn[data-window-id="window-my-computer"]')).toBeVisible();
+
+    // Log Off → confirm.
+    await page.click('#start-button');
+    await page.waitForTimeout(200);
+    await page.locator('[data-action="logoff"]').click();
+    await page.waitForTimeout(200);
+    await expect(page.locator('#window-logoff')).toBeVisible();
+    await page.locator('#logoff-ok').click();
+    await page.waitForTimeout(200);
+
+    // Every window closed AND no stale taskbar chips left behind (the reason
+    // Log Off runs closeWindow per-window rather than minimize-all).
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'closed');
+    await expect(page.locator('#window-my-computer')).toHaveAttribute('data-state', 'closed');
+    await expect(page.locator('#window-logoff')).toHaveAttribute('data-state', 'closed');
+    await expect(page.locator('.taskbar-window-btn[data-window-id="window-guestbook"]')).toHaveCount(0);
+    await expect(page.locator('.taskbar-window-btn[data-window-id="window-my-computer"]')).toHaveCount(0);
+
+    assertConsoleClean(gate);
   });
 });
 

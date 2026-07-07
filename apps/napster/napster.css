@@ -235,9 +235,14 @@
     color: #555;
     margin-bottom: 4px;
   }
-  /* Size / Bitrate / User / Connection: inline metadata row. */
+  /* Size / Bitrate / User / Connection: inline metadata row. width:auto
+     resets the width:100% the shared td rule above sets for the stacked
+     Song/Artist cells — without it each inline-block cell stays 100% wide and
+     the four flow horizontally out of the card, forcing the results wrap to
+     scroll sideways instead of reflowing. */
   .napster-results td:nth-child(n+3) {
     display: inline-block;
+    width: auto;
     font-size: 11px;
     color: #777;
     margin-right: 8px;

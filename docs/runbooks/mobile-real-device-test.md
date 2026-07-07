@@ -15,7 +15,7 @@ Follow it on any PR that touches:
 
 If a PR only touches desktop chrome (e.g. window chrome CSS gated behind a non-mobile selector), the automated suite is sufficient and this runbook can be skipped.
 
-## The 9 steps
+## The steps
 
 Walk these in order on each device. If any step fails, see "What if a step fails" below.
 
@@ -90,6 +90,38 @@ Walk these in order on each device. If any step fails, see "What if a step fails
 **Expected.** Both windows remain visible after rotation. Sizes adjust to the new viewport. Title bars remain on-screen and reachable.
 
 **Automated coverage.** [`tests/mobile-orientation.spec.js`](../../tests/mobile-orientation.spec.js).
+
+### 10. Maximize-by-default (portrait iPhone)
+
+**Action.** On iPhone in portrait, tap the Napster icon (or About, Guestbook, Matrix — any resizable app window). 
+
+**Expected.** The window opens already maximized: full width, full height above the taskbar, no floating cascade window clamped to a corner. Small dialogs (Calculator, Minesweeper, Run, ICQ, Clock) still open at their native size, centered.
+
+**Automated coverage.** [`tests/mobile-maximize-default.spec.js`](../../tests/mobile-maximize-default.spec.js).
+
+### 11. Restore to floating (portrait iPhone)
+
+**Action.** With a maximized app window open (from step 10), tap the Maximize/restore control on the title bar.
+
+**Expected.** The window restores to a floating window that sits fully on-screen — clamped inside the viewport, title bar reachable. Tapping the control again re-maximizes it.
+
+**Automated coverage.** [`tests/mobile-maximize-default.spec.js`](../../tests/mobile-maximize-default.spec.js), [`tests/mobile-title-bar-controls.spec.js`](../../tests/mobile-title-bar-controls.spec.js).
+
+### 12. Start-menu sidebar stripe (portrait iPhone)
+
+**Action.** On iPhone, tap the Start button.
+
+**Expected.** The Start menu slides in with the vertical "Windows 98" sidebar stripe visible down the left edge, and the menu fills the viewport height cleanly with no dead silver band above the taskbar.
+
+**Automated coverage.** [`tests/mobile-start-menu.spec.js`](../../tests/mobile-start-menu.spec.js). Manual is the backstop for the visual feel of the stripe and the slide.
+
+### 13. System sounds + speaker toggle (audible — real device only)
+
+**Action.** On iPhone, after the first tap anywhere (browser autoplay unlocks audio), open the Shut Down or Run dialog and listen for the error ding. Then tap the speaker icon in the system tray; open a dialog again.
+
+**Expected.** With sound on, dialog opens play a short Win98-style ding. Tapping the tray speaker mutes it (icon shows the red mute slash) and silences all sounds; the choice persists across a reload. This is the one check automation cannot make — Playwright asserts the toggle state and persistence, never the audible output.
+
+**Automated coverage.** [`tests/sounds.spec.js`](../../tests/sounds.spec.js) (toggle state + persistence only; audible output is manual).
 
 ## What if a step fails
 

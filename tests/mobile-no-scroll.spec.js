@@ -59,9 +59,13 @@ test.describe('Mobile — page never scrolls', () => {
     await page.evaluate(() => { window.location.hash = '#window-paint'; });
     await page.waitForTimeout(300);
 
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // R9: About and Paint are in MAXIMIZE_DEFAULT (open maximized on a portrait
+    // phone); Calculator is a fixed-size dialog and stays a centered 'open'
+    // window. The anti-scroll contract is a page-level property, independent of
+    // each window's state — three open windows still must not scroll the page.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
     await expect(page.locator('#window-calculator')).toHaveAttribute('data-state', 'open');
-    await expect(page.locator('#window-paint')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('#window-paint')).toHaveAttribute('data-state', 'maximized');
 
     // Same structural exercise as the cold-load case — overflow contract +
     // programmatic scroll attempt. Mouse wheel isn't available on mobile

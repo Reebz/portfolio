@@ -105,10 +105,12 @@ test.describe('Mobile Start menu (B6)', () => {
     });
     expect(display).toBe('none');
 
-    // And the Guestbook window opens.
+    // And the Guestbook window opens. R9: Guestbook is in MAXIMIZE_DEFAULT, so
+    // on a portrait phone the launch lands it maximized — the leaf-tap-launches
+    // proof holds either way.
     await expect(page.locator('#window-guestbook')).toHaveAttribute(
       'data-state',
-      'open'
+      'maximized'
     );
   });
 });

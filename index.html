@@ -381,29 +381,6 @@ Mitch</div>
       </div>
     </div>
 
-    <template id="project-window-template">
-      <div class="window" data-state="closed" role="dialog" tabindex="-1">
-        <div class="title-bar">
-          <img src="img/icons/project-sm.png" class="title-bar-icon" alt="" aria-hidden="true">
-          <div class="title-bar-text"></div>
-          <div class="title-bar-controls" role="toolbar" aria-label="Window controls">
-            <button aria-label="Minimize"></button>
-            <button aria-label="Maximize"></button>
-            <button aria-label="Close"></button>
-          </div>
-        </div>
-        <div class="window-body" role="document">
-          <img class="project-screenshot" loading="lazy" decoding="async" alt="">
-          <div class="project-description"></div>
-          <div class="tech-stack"></div>
-          <div class="project-links"></div>
-        </div>
-        <div class="status-bar">
-          <p class="status-bar-field"></p>
-        </div>
-      </div>
-    </template>
-
     <!-- Context Menus -->
     <div id="context-menu-desktop" class="context-menu" role="menu" aria-label="Desktop context menu">
       <button class="context-menu-item" role="menuitem" data-action="arrange-icons">Arrange Icons</button>
@@ -449,6 +426,23 @@ Mitch</div>
       <div style="text-align:right;margin-top:16px;">
         <button id="shutdown-ok" style="min-width:75px;">OK</button>
         <button data-close-window="window-shutdown" style="min-width:75px;margin-left:4px;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log Off Dialog -->
+  <div id="window-logoff" class="window" data-state="closed" role="dialog" aria-labelledby="title-logoff" tabindex="-1" style="width:340px;height:auto;min-height:auto;">
+    <div class="title-bar">
+      <div class="title-bar-text" id="title-logoff">Log Off Reebz</div>
+      <div class="title-bar-controls" role="toolbar" aria-label="Window controls">
+        <button aria-label="Close"></button>
+      </div>
+    </div>
+    <div class="window-body" role="document" style="padding:16px;background:var(--win98-silver);">
+      <div style="font-family:'Pixelated MS Sans Serif',Arial;font-size:11px;margin-bottom:12px;">Log off this imaginary computer? Every window you opened will politely close. (Relax — no real session ends, and Reebz will be right here when you get back.)</div>
+      <div style="text-align:right;margin-top:16px;">
+        <button id="logoff-ok" style="min-width:75px;">Yes</button>
+        <button data-close-window="window-logoff" style="min-width:75px;margin-left:4px;">No</button>
       </div>
     </div>
   </div>
@@ -537,6 +531,11 @@ Mitch</div>
 
       <li class="start-menu-separator" role="separator"></li>
 
+      <li><button class="start-menu-item start-menu-item-lg" role="menuitem" data-action="logoff">
+        <span class="start-icon-32" aria-hidden="true" style="display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;">&#128273;</span>
+        <span class="start-item-label">Log Off Reebz...</span>
+      </button></li>
+
       <li><button class="start-menu-item start-menu-item-lg" role="menuitem" data-action="shutdown">
         <img src="img/icons/shutdown-32.png" alt="" class="start-icon-32">
         <span class="start-item-label">Shut Down...</span>
@@ -550,13 +549,13 @@ Mitch</div>
 
     <!-- Quick Launch -->
     <div id="quick-launch">
-      <button class="quick-launch-btn" data-action="show-desktop" title="Show Desktop">
+      <button class="quick-launch-btn" data-action="show-desktop">
         <img src="img/icons/desktop-sm.png" alt="Show Desktop" width="16" height="16">
       </button>
-      <button class="quick-launch-btn" data-window="window-contact" title="Outlook Express">
+      <button class="quick-launch-btn" data-window="window-contact">
         <img src="img/icons/contact-sm.png" alt="Outlook Express" width="16" height="16">
       </button>
-      <button class="quick-launch-btn" data-window="window-my-computer" title="My Computer">
+      <button class="quick-launch-btn" data-window="window-my-computer">
         <img src="img/icons/mycomputer-sm.png" alt="My Computer" width="16" height="16">
       </button>
     </div>
@@ -564,15 +563,21 @@ Mitch</div>
     <div id="taskbar-buttons"></div>
     <div id="system-tray" role="group" aria-label="System tray">
       <span id="visitor-counter" role="status" aria-live="polite" aria-atomic="true" aria-label="Visitor counter"></span>
+      <span id="tray-speaker" role="button" tabindex="0" aria-pressed="true" aria-label="Sound on" title="Sound on"></span>
       <span id="clock" role="timer" aria-live="off" aria-atomic="true" aria-label="System clock"></span>
     </div>
   </div>
 
+  <!-- Reusable Win98 hover tooltip (one element, positioned + filled by JS). -->
+  <div id="win98-tooltip" role="tooltip" aria-hidden="true"></div>
+
+  <script src="sounds.js"></script>
   <script src="boot.js"></script>
   <script src="apps/matrix/rain.js"></script>
-  <script src="apps/napster/napster.js"></script>
   <script defer src="desktop.js"></script>
+  <!-- Third-party stats; SRI omitted because gc.zgo.at updates count.js without notice. -->
   <script data-goatcounter="https://reebz.goatcounter.com/count"
-          async src="//gc.zgo.at/count.js"></script>
+          async src="https://gc.zgo.at/count.js"
+          onerror="console.warn('[gc] script failed to load')"></script>
 </body>
 </html>

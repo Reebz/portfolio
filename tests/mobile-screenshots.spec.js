@@ -32,6 +32,15 @@
 // Update procedure documented in README.md "Updating screenshot baselines".
 
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter } = require('./_helpers');
+
+// Stub gc.zgo.at / goatcounter.com so CI never hits real analytics. Also
+// keeps the visitor-counter render deterministic for the masked screenshot
+// regions — though those regions are masked, a counter that's still "Loading…"
+// would change the bounding box.
+test.beforeEach(async ({ page }) => {
+  await mockGoatCounter(page);
+});
 
 // Defensive: even though playwright.config.js routes mobile-*.spec.js only
 // to phone projects, this guards against future config drift where another
@@ -111,14 +120,24 @@ test.describe('Mobile screenshot baselines (U6)', () => {
       window.location.hash = '#window-about';
     });
     await page.waitForTimeout(250);
-    await page.evaluate(() => {
-      window.location.hash = '#window-cavaro';
-    });
-    await page.waitForTimeout(300);
+    // About opens maximized on portrait phones (R9) and the maximized state
+    // pins left/top with !important, which would defeat the deterministic
+    // style writes below — restore it to a floating window first, before
+    // Cavaro opens centered on top and intercepts the tap. Cavaro is a
+    // fixed-size dialog and opens floating.
+    await expect(page.locator('#window-about')).toHaveAttribute(
+      'data-state',
+      'maximized'
+    );
+    await page.locator('#window-about [aria-label="Maximize"]').tap();
     await expect(page.locator('#window-about')).toHaveAttribute(
       'data-state',
       'open'
     );
+    await page.evaluate(() => {
+      window.location.hash = '#window-cavaro';
+    });
+    await page.waitForTimeout(300);
     await expect(page.locator('#window-cavaro')).toHaveAttribute(
       'data-state',
       'open'

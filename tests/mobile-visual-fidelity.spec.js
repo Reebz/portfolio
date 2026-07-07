@@ -40,7 +40,11 @@ async function openAboutWindow(page) {
     sessionStorage.setItem('booted', '1');
     window.location.hash = '#window-about';
   });
-  await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+  // R9: About is in MAXIMIZE_DEFAULT, so on a portrait phone it opens maximized.
+  // The chrome this suite audits (title-bar height, control-button fill, colors)
+  // is identical in the maximized state — maximize only repositions/resizes the
+  // window, it doesn't restyle the title bar or its controls.
+  await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
 }
 
 test.describe('Mobile visual fidelity — chrome elements', () => {

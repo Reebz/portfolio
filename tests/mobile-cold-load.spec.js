@@ -13,6 +13,12 @@
 // meta-test enforces this going forward.
 
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter } = require('./_helpers');
+
+// Stub gc.zgo.at / goatcounter.com so CI never hits real analytics.
+test.beforeEach(async ({ page }) => {
+  await mockGoatCounter(page);
+});
 
 test.describe('Mobile cold load', () => {
   test.beforeEach(async ({ page }) => {
@@ -50,6 +56,9 @@ test.describe('Mobile cold load', () => {
     await expect(aboutIcon).toBeVisible();
     await aboutIcon.tap();
     await page.waitForTimeout(300);
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // These phone projects are all portrait (<480px), where resizable app
+    // windows open maximized by default (R9) — the tap still launches the
+    // window, it just arrives maximized rather than floating.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
   });
 });

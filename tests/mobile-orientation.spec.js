@@ -24,7 +24,11 @@ test.describe('Mobile orientation change', () => {
     await page.evaluate(() => { window.location.hash = '#window-cavaro'; });
     await page.waitForTimeout(150);
 
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // R9: About is in MAXIMIZE_DEFAULT (maximized on a portrait phone); Cavaro
+    // is a fixed-size dialog and opens floating. Rotation never un-maximizes a
+    // window, so About stays maximized on both sides of the flip. What this
+    // test proves — both windows SURVIVE the rotation — holds with mixed states.
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
     await expect(page.locator('#window-cavaro')).toHaveAttribute('data-state', 'open');
 
     // Swap to landscape (height ↔ width). Read current viewport so this
@@ -39,8 +43,8 @@ test.describe('Mobile orientation change', () => {
     // U6 debounces through rAF; give the frame time to settle.
     await page.waitForTimeout(150);
 
-    // Both windows still open.
-    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'open');
+    // Both windows still present after the flip (About maximized, Cavaro open).
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'maximized');
     await expect(page.locator('#window-cavaro')).toHaveAttribute('data-state', 'open');
   });
 
