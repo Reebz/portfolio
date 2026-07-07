@@ -114,6 +114,11 @@
   // crossings of 768px (where CSS flips body { zoom: 1.5 } ↔ 1.0). The bound
   // flag guards against double-binding if init() ever runs twice.
   var lastZoom = null;
+  // Landscape (vw >= vh) as of the last viewport tick. Paired with lastZoom to
+  // tell an orientation flip (phone/iPad rotation) or a zoom-band crossing apart
+  // from an ordinary same-orientation desktop resize — only the former should
+  // re-fit each window's prevRect snapshot.
+  var lastViewportLandscape = null;
   var resizeHandlerBound = false;
 
   // Tracks which per-app <script> files have already been injected. Each
@@ -2151,18 +2156,26 @@
     var currentZoom = getZoom();
     var vw = window.innerWidth / currentZoom;
     var vh = window.innerHeight / currentZoom;
+    var isLandscape = vw >= vh;
 
-    // Always: clamp open windows AND rewrite every window's prevRect snapshot
-    // into the new viewport's CSS-pixel coordinate space. The prevRect rewrite
-    // must run on every viewport change (phone rotation keeps zoom constant,
-    // so the zoom-crossing branch never fires on phones), otherwise
-    // toggleMaximize → restore can land the window off-screen.
+    // The prevRect snapshot only needs re-fitting when the viewport's shape
+    // actually changes under a window: a rotation (orientation flip — the phone/
+    // iPad case, where zoom stays constant) or a desktop zoom-band crossing of
+    // 768px. An ordinary same-orientation desktop resize must NOT touch prevRect
+    // — the Math.min clamp below is monotonic, so re-running it every resize
+    // would shrink the restore size permanently and it would never grow back.
+    var orientationFlipped = lastViewportLandscape !== null && isLandscape !== lastViewportLandscape;
+    var zoomCrossed = lastZoom !== null && currentZoom !== lastZoom;
+    var refitPrevRect = orientationFlipped || zoomCrossed;
+
+    // Always clamp open windows so a resize can't strand one off-screen; re-fit
+    // prevRect only on a rotation/zoom crossing (see above).
     windows.forEach(function(win) {
       if (!win || !win.el) return;
       if (win.state === 'open') {
         clampWindowToViewport(win.el);
       }
-      if (win.prevRect) {
+      if (win.prevRect && refitPrevRect) {
         win.prevRect.x = Math.max(0, Math.min(win.prevRect.x, vw - DRAG_EDGE_MARGIN_X));
         win.prevRect.y = Math.max(0, Math.min(win.prevRect.y, vh - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
         win.prevRect.w = Math.min(win.prevRect.w, vw);
@@ -2172,12 +2185,13 @@
 
     // Only on zoom-change crossings: discard persisted icon positions so icons
     // reflow under the CSS-driven mobile layout for the new mode.
-    if (lastZoom !== null && currentZoom !== lastZoom) {
+    if (zoomCrossed) {
       safeRemove('localStorage', 'icon-positions');
     }
 
     layoutIcons();
     lastZoom = currentZoom;
+    lastViewportLandscape = isLandscape;
   }
 
   // Idempotent binder. iOS Safari fires both resize and orientationchange on
@@ -3375,6 +3389,7 @@
     // windows survive viewport changes and desktop-browser-width crossings of
     // the 768px zoom boundary.
     lastZoom = getZoom();
+    lastViewportLandscape = (window.innerWidth / lastZoom) >= (window.innerHeight / lastZoom);
     bindViewportChangeHandler();
 
     // Per-window lifecycle hooks. Clock interval and Matrix RAF cost real

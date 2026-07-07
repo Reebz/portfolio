@@ -668,3 +668,40 @@ test.describe('U6 — Minimize/restore taskbar zoom-rectangle animation', () => 
     expect(res.chip).toBe(false);     // no phantom taskbar chip
   });
 });
+
+test.describe('Maximize restore-size survives a desktop resize round-trip', () => {
+  test.beforeEach(BOOTED);
+
+  // A same-orientation desktop resize (no zoom-band crossing, no rotation) must
+  // NOT shrink a maximized window's stored restore size. onViewportChange only
+  // re-fits prevRect on a rotation or zoom crossing; the Math.min clamp is
+  // monotonic, so running it on every resize would shrink restore-size and it
+  // would never grow back when the window is widened again.
+  test('narrowing then re-widening the browser preserves the restore width', async ({ page }) => {
+    await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    // Float it wider than the narrow-point CSS viewport (900 / zoom 1.5 = 600),
+    // so a monotonic clamp would visibly shrink it.
+    await page.evaluate(() => {
+      const el = document.getElementById('window-guestbook');
+      el.style.left = '60px'; el.style.top = '40px';
+      el.style.width = '700px'; el.style.height = '360px';
+    });
+    const MAX_BTN = '#window-guestbook .title-bar [aria-label="Maximize"]';
+    await page.click(MAX_BTN); // snapshots prevRect ~ 700 wide
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'maximized');
+
+    const vp = page.viewportSize();
+    await page.setViewportSize({ width: 900, height: vp.height }); // narrower, still landscape, still >768
+    await page.waitForTimeout(60);
+    await page.setViewportSize({ width: vp.width, height: vp.height }); // back to original
+    await page.waitForTimeout(60);
+
+    await page.click(MAX_BTN); // restore
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
+    const width = await page.evaluate(() =>
+      parseInt(document.getElementById('window-guestbook').style.width, 10)
+    );
+    expect(width).toBe(700); // preserved, not shrunk to the narrow-point viewport
+  });
+});
