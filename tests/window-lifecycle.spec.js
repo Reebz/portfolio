@@ -462,6 +462,76 @@ test.describe('Relaunch and lifecycle regressions (review follow-ups)', () => {
     await expect(page.locator('#display')).toHaveText('5');
   });
 
+  // Same init-once contract for Napster (napsterWired guard + launchNapster's
+  // existing-window early-exit). A track-row dblclick calls window.open once;
+  // rebound handlers across relaunches would open one tab per binding.
+  test('Napster track dblclick opens exactly one link after repeated relaunches', async ({ page }) => {
+    const openNapster = async () => {
+      await page.click('#start-button');
+      await expect(page.locator('#start-menu')).toHaveClass(/open/);
+      await page.hover('[role="menuitem"]:has-text("Programs")');
+      await page.waitForSelector('.has-submenu.submenu-open .start-submenu', { state: 'visible' });
+      await expect(page.locator('[data-app="napster"]')).toBeVisible();
+      await page.click('[data-app="napster"]');
+      // The window is built inside runInit after napster.js loads — wait for a row.
+      await expect(page.locator('#window-napster')).toHaveAttribute('data-state', 'open');
+      await page.waitForSelector('#napster-results-body .napster-row');
+    };
+
+    for (let i = 0; i < 3; i++) {
+      await openNapster();
+      await page.click('#window-napster .title-bar [aria-label="Close"]');
+      await page.waitForTimeout(150);
+    }
+    await openNapster();
+
+    // Count window.open calls. A single dblclick handler fires it once; N
+    // stacked handlers (one per relaunch) would fire it N times.
+    await page.evaluate(() => {
+      window.__napOpenCount = 0;
+      window.open = function () { window.__napOpenCount++; return null; };
+    });
+
+    await page.locator('#napster-results-body .napster-row').first().dblclick();
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__napOpenCount)).toBe(1);
+  });
+
+  // Minesweeper's `wired` guard: __initMinesweeper runs on EVERY launch
+  // (launchMinesweeper has no early-exit), so only the guard keeps the grid's
+  // delegated contextmenu handler bound once. With an EVEN relaunch count, a
+  // stacked handler toggles the flag an even number of times on a single
+  // right-click — leaving the cell UNflagged (mine-count 010). One binding
+  // flags exactly once (🚩, mine-count 009).
+  test('Minesweeper right-click flags exactly one cell after repeated relaunches', async ({ page }) => {
+    const openMinesweeper = async () => {
+      await page.click('#start-button');
+      await expect(page.locator('#start-menu')).toHaveClass(/open/);
+      await page.hover('[role="menuitem"]:has-text("Programs")');
+      await page.waitForSelector('.has-submenu.submenu-open .start-submenu', { state: 'visible' });
+      await page.hover('[role="menuitem"]:has-text("Games")');
+      await expect(page.locator('[data-app="minesweeper"]')).toBeVisible();
+      await page.click('[data-app="minesweeper"]');
+      await expect(page.locator('#window-minesweeper')).toHaveAttribute('data-state', 'open');
+      await page.waitForSelector('#window-minesweeper #grid .cell');
+    };
+
+    // 3 close/reopen cycles + a final open = 4 inits (even).
+    for (let i = 0; i < 3; i++) {
+      await openMinesweeper();
+      await page.click('#window-minesweeper .title-bar [aria-label="Close"]');
+      await page.waitForTimeout(150);
+    }
+    await openMinesweeper();
+
+    const cell = page.locator('#window-minesweeper #grid .cell').first();
+    await cell.click({ button: 'right' });
+    await page.waitForTimeout(100);
+
+    await expect(cell).toHaveText('🚩');
+    await expect(page.locator('#window-minesweeper #mine-count')).toHaveText('009');
+  });
+
   test('Restore from minimize reapplies maximized state', async ({ page }) => {
     const icon = page.locator('[data-window-id="window-guestbook"]');
     await icon.dblclick();
