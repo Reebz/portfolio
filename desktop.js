@@ -13,12 +13,9 @@
   // user can always grab the title bar back from the viewport edges.
   var DRAG_EDGE_MARGIN_X = 100; // px kept visible on the right edge
   var DRAG_EDGE_MARGIN_Y = 30;  // px kept visible above the taskbar
-  // Minimize/restore zoom-rectangle animation. Duration matches the
-  // Start-menu submenu slide (style.css transform 0.18s ease-out). The
-  // transitionend fallback fires a touch later so a dropped event can't
-  // wedge the window in a half-transformed state.
-  var WINDOW_ANIM_MS = 180;
-  var WINDOW_ANIM_FALLBACK_MS = 250;
+  // Minimize/restore zoom-rectangle animation lives in window-animation.js
+  // (window.Win98WindowAnim); this file just drives it from minimize/restore.
+  var Anim = window.Win98WindowAnim;
 
   // --- Project Data ---
   var PROJECTS = [
@@ -451,67 +448,6 @@
     }
   }
 
-  // Honor the OS "reduce motion" setting. Wrapped because matchMedia can
-  // be absent/throwing in exotic embeddings; a missing signal means animate.
-  function prefersReducedMotion() {
-    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
-    catch (e) { return false; }
-  }
-
-  // Translate (in unzoomed CSS px) that moves the window's center onto the
-  // taskbar button's center. getBoundingClientRect returns zoom-scaled device
-  // px for both elements, so their delta is device px; dividing by the body
-  // zoom converts it to the element-local units a CSS transform expects (the
-  // transform is re-scaled by the same zoom when painted, landing on target).
-  function taskbarVector(winEl, targetEl) {
-    var z = getZoom();
-    var wr = winEl.getBoundingClientRect();
-    var br = targetEl.getBoundingClientRect();
-    return {
-      x: ((br.left + br.width / 2) - (wr.left + wr.width / 2)) / z,
-      y: ((br.top + br.height / 2) - (wr.top + wr.height / 2)) / z
-    };
-  }
-
-  // Run a one-shot transform+opacity transition on win.el from
-  // (startTransform/startOpacity) to (endTransform/endOpacity), then clear the
-  // inline transition/transform/opacity and call onDone. Completion is
-  // idempotent via win.animFinish: a transitionend, the fallback timer, or a
-  // double-fire from the next minimize/restore all snap it to the end exactly
-  // once, so the window can never wedge in a half-transformed state.
-  function animateWindowTransform(win, startTransform, startOpacity, endTransform, endOpacity, onDone) {
-    var el = win.el;
-    var finished = false;
-    var fallback = null;
-    function onEnd(e) {
-      if (e.target === el && e.propertyName === 'transform') finish();
-    }
-    function finish() {
-      if (finished) return;
-      finished = true;
-      if (fallback) { clearTimeout(fallback); fallback = null; }
-      el.removeEventListener('transitionend', onEnd);
-      win.animFinish = null;
-      el.style.transition = '';
-      el.style.transform = '';
-      el.style.opacity = '';
-      if (onDone) onDone();
-    }
-    win.animFinish = finish;
-
-    // Commit the start state with no transition, force a reflow so it becomes
-    // the transition origin, then flip to the end state under the transition.
-    el.style.transition = 'none';
-    el.style.transform = startTransform;
-    el.style.opacity = startOpacity;
-    void el.offsetWidth; // reflow: lock in the start state
-    el.addEventListener('transitionend', onEnd);
-    el.style.transition = 'transform ' + WINDOW_ANIM_MS + 'ms ease-out, opacity ' + WINDOW_ANIM_MS + 'ms ease-out';
-    el.style.transform = endTransform;
-    el.style.opacity = endOpacity;
-    fallback = setTimeout(finish, WINDOW_ANIM_FALLBACK_MS);
-  }
-
   function minimizeWindow(id) {
     var win = windows.get(id);
     if (!win) return;
@@ -559,14 +495,14 @@
     // no taskbar button to fly toward, or the window is maximized — a maximized
     // window carries transform:none !important, which would swallow the inline
     // transform anyway, so it disappears instantly by design.
-    if (win.state === 'maximized' || !win.taskbarBtn || prefersReducedMotion()) {
+    if (win.state === 'maximized' || !win.taskbarBtn || Anim.prefersReducedMotion()) {
       finalize();
       return;
     }
 
-    var v = taskbarVector(win.el, win.taskbarBtn);
+    var v = Anim.taskbarVector(win.el, win.taskbarBtn, getZoom());
     var end = 'translate(' + v.x + 'px, ' + v.y + 'px) scale(0.05)';
-    animateWindowTransform(win, 'translate(0px, 0px) scale(1)', '1', end, '0', finalize);
+    Anim.animate(win, 'translate(0px, 0px) scale(1)', '1', end, '0', finalize);
   }
 
   function restoreWindow(id) {
@@ -608,10 +544,10 @@
       // Reverse of minimize: grow the window out from the taskbar button.
       // Same skip conditions — reduced motion, no button, or maximized (its
       // transform:none !important would suppress the inline transform).
-      if (win.state !== 'maximized' && win.taskbarBtn && !prefersReducedMotion()) {
-        var v = taskbarVector(win.el, win.taskbarBtn);
+      if (win.state !== 'maximized' && win.taskbarBtn && !Anim.prefersReducedMotion()) {
+        var v = Anim.taskbarVector(win.el, win.taskbarBtn, getZoom());
         var start = 'translate(' + v.x + 'px, ' + v.y + 'px) scale(0.05)';
-        animateWindowTransform(win, start, '0', 'translate(0px, 0px) scale(1)', '1', null);
+        Anim.animate(win, start, '0', 'translate(0px, 0px) scale(1)', '1', null);
       }
     }
   }
@@ -1358,11 +1294,9 @@
   }
 
   // --- Win98 Hover Tooltips ---
-  // One reusable #win98-tooltip element, positioned + filled on hover. Bound
-  // only when the pointer can actually hover (desktop); phones report
-  // (hover: none) so nothing binds and no tooltip can ever show. Native title
-  // attributes are avoided because they can't be styled to match Win98.
-  var TOOLTIP_DELAY = 500;
+  // The tooltip mechanism lives in tooltips.js (window.Win98Tooltips); this file
+  // supplies only the app-specific source resolver (below) and drives setup()
+  // from init().
 
   // Tray speaker toggle: mutes/unmutes all system sounds and persists the
   // choice. Default ENABLED (a null flag reads as on). Reflects state through
@@ -1403,84 +1337,21 @@
     });
   }
 
-  function setupTooltips() {
-    var tooltipEl = document.getElementById('win98-tooltip');
-    if (!tooltipEl) return;
-    if (!(window.matchMedia && window.matchMedia('(hover: hover)').matches)) return;
-
-    var showTimer = null;
-    var currentTarget = null;
-
-    function positionAndShow(targetEl, text) {
-      var z = getZoom();
-      tooltipEl.textContent = text;
-      tooltipEl.classList.add('visible');
-      // Measure after making visible; getBoundingClientRect returns viewport
-      // (post-zoom) coordinates in the same space as clientX / innerWidth.
-      var tRect = tooltipEl.getBoundingClientRect();
-      var aRect = targetEl.getBoundingClientRect();
-      var gap = 2;
-      var x = aRect.left;
-      var y = aRect.bottom + gap;
-      // Flip above the target when it would overflow the bottom edge (the tray
-      // clock and quick-launch live in the taskbar at the bottom).
-      if (y + tRect.height > window.innerHeight) y = aRect.top - tRect.height - gap;
-      if (x + tRect.width > window.innerWidth) x = window.innerWidth - tRect.width - gap;
-      if (x < 0) x = gap;
-      if (y < 0) y = gap;
-      // CSS position lives in the pre-zoom coordinate space, so divide by zoom
-      // (same convention as showContextMenu).
-      tooltipEl.style.left = (x / z) + 'px';
-      tooltipEl.style.top = (y / z) + 'px';
+  // Resolve a hovered node to its tooltip host + text, or null. Passed to
+  // window.Win98Tooltips.setup — it stays here because the tray-clock text
+  // depends on this file's Sydney date helpers.
+  function tooltipSourceFor(el) {
+    if (!el || !el.closest) return null;
+    var clock = el.closest('#clock');
+    if (clock) return { el: clock, text: formatSydneyFullDate(getSydneyTime()) };
+    var ql = el.closest('.quick-launch-btn');
+    if (ql) {
+      var img = ql.querySelector('img');
+      return { el: ql, text: (img && img.getAttribute('alt')) || '' };
     }
-
-    function scheduleTooltip(targetEl, text) {
-      clearTimeout(showTimer);
-      showTimer = setTimeout(function() { positionAndShow(targetEl, text); }, TOOLTIP_DELAY);
-    }
-
-    function cancelTooltip() {
-      clearTimeout(showTimer);
-      tooltipEl.classList.remove('visible');
-      currentTarget = null;
-    }
-
-    // Resolve a hovered node to its tooltip host + text, or null.
-    function tooltipSourceFor(el) {
-      if (!el || !el.closest) return null;
-      var clock = el.closest('#clock');
-      if (clock) return { el: clock, text: formatSydneyFullDate(getSydneyTime()) };
-      var ql = el.closest('.quick-launch-btn');
-      if (ql) {
-        var img = ql.querySelector('img');
-        return { el: ql, text: (img && img.getAttribute('alt')) || '' };
-      }
-      var ctrl = el.closest('.title-bar-controls button');
-      if (ctrl) return { el: ctrl, text: ctrl.getAttribute('aria-label') || '' };
-      return null;
-    }
-
-    // Delegated over the whole document so per-window title-bar controls are
-    // covered without per-window wiring. pointerover/out bubble (unlike
-    // pointerenter/leave), so closest() dedupes moves within a target.
-    document.addEventListener('pointerover', function(e) {
-      var src = tooltipSourceFor(e.target);
-      if (!src || !src.text) return;
-      if (currentTarget === src.el) return;
-      currentTarget = src.el;
-      scheduleTooltip(src.el, src.text);
-    });
-
-    document.addEventListener('pointerout', function(e) {
-      if (!currentTarget) return;
-      // Ignore moves that stay inside the current target (e.g. button -> img).
-      if (e.relatedTarget && currentTarget.contains(e.relatedTarget)) return;
-      cancelTooltip();
-    });
-
-    // Any press dismisses the tooltip so it never lingers over an activated
-    // control (matches native Win98).
-    document.addEventListener('pointerdown', cancelTooltip);
+    var ctrl = el.closest('.title-bar-controls button');
+    if (ctrl) return { el: ctrl, text: ctrl.getAttribute('aria-label') || '' };
+    return null;
   }
 
   // --- Icon Drag (rearrange desktop icons) ---
@@ -3370,7 +3241,7 @@
     initMyComputer();
     setupSystemTrayClicks();
     initSoundToggle();
-    setupTooltips();
+    window.Win98Tooltips.setup({ getZoom: getZoom, sourceFor: tooltipSourceFor });
     setupContextMenus();
     setupSelectionRect();
     initSubmenus();
