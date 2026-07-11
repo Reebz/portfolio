@@ -560,6 +560,119 @@ body {
   line-height: 1.6;
 }
 
+/* === DOS caret (also fixes the pre-existing Matrix terminal cursor, which
+   referenced this keyframe without it being defined) === */
+@keyframes dos-cursor-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* === Idle screensaver overlay === */
+#screensaver-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99997;
+  background: #000;
+  cursor: none;
+}
+#screensaver-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* === Blue Screen of Death (easter egg) === */
+#bsod-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #0000aa;
+  color: #c5c5c5;
+  font-family: "Perfect DOS VGA 437", "Lucida Console", monospace;
+  font-size: 16px;
+  line-height: 1.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  cursor: pointer;
+}
+#bsod-overlay .bsod-inner {
+  max-width: 720px;
+  text-align: left;
+}
+#bsod-overlay .bsod-head {
+  display: table;
+  margin: 0 auto 20px;
+  background: #c5c5c5;
+  color: #0000aa;
+  padding: 0 12px;
+}
+#bsod-overlay p { margin: 0 0 16px; }
+#bsod-overlay .bsod-cont { text-align: center; margin-top: 22px; }
+.bsod-blink { animation: dos-cursor-blink 1s steps(1) infinite; }
+
+/* === Display Properties: preview monitor === */
+.dispprop-monitor { width: 128px; margin: 0 auto; }
+.dispprop-screen {
+  height: 84px;
+  background: var(--win98-teal);
+  border: 2px solid #000;
+  box-shadow: inset -1px -1px #fff, inset 1px 1px #808080;
+  position: relative;
+  overflow: hidden;
+}
+.dispprop-mini-win {
+  position: absolute;
+  left: 14px;
+  top: 20px;
+  width: 74px;
+  height: 44px;
+  background: var(--win98-silver);
+  border: 1px solid #000;
+}
+.dispprop-mini-win span {
+  display: block;
+  height: 9px;
+  background: linear-gradient(90deg, navy, #1084d0);
+}
+.dispprop-stand {
+  width: 40px;
+  height: 10px;
+  margin: 0 auto;
+  background: var(--win98-silver);
+  border: 2px solid #000;
+  border-top: none;
+}
+
+/* === Desktop color schemes (Display Properties) ===
+   Scoped to the desktop background and active title bars only, so windows stay
+   their readable silver — a safe, obviously-working reskin. Default (no
+   data-theme) is unchanged, keeping the screenshot baselines intact. */
+/* Committed scheme: recolor the real desktop + active title bars (body attr). */
+body[data-theme="rose"] #desktop { background: #9c5c78; }
+body[data-theme="rose"] .window .title-bar { background: linear-gradient(90deg, #7a2a4d, #c76b95); }
+
+body[data-theme="eggplant"] #desktop { background: #4e4066; }
+body[data-theme="eggplant"] .window .title-bar { background: linear-gradient(90deg, #3b2a4d, #6f4f8f); }
+
+body[data-theme="high-contrast"] #desktop { background: #000; }
+body[data-theme="high-contrast"] .window .title-bar { background: #000; }
+
+body[data-theme="hotdog"] #desktop { background: #c00000; }
+body[data-theme="hotdog"] .window .title-bar { background: linear-gradient(90deg, #ff0000, #ff8c00); }
+
+/* Preview scheme: the Display Properties monitor thumbnail reflects the
+   currently-selected (not yet committed) scheme via its own data-theme. */
+.dispprop-screen[data-theme="rose"] { background: #9c5c78; }
+.dispprop-screen[data-theme="rose"] .dispprop-mini-win span { background: linear-gradient(90deg, #7a2a4d, #c76b95); }
+.dispprop-screen[data-theme="eggplant"] { background: #4e4066; }
+.dispprop-screen[data-theme="eggplant"] .dispprop-mini-win span { background: linear-gradient(90deg, #3b2a4d, #6f4f8f); }
+.dispprop-screen[data-theme="high-contrast"] { background: #000; }
+.dispprop-screen[data-theme="high-contrast"] .dispprop-mini-win span { background: #000; }
+.dispprop-screen[data-theme="hotdog"] { background: #c00000; }
+.dispprop-screen[data-theme="hotdog"] .dispprop-mini-win span { background: linear-gradient(90deg, #ff0000, #ff8c00); }
+
 /* === Notepad Style === */
 .notepad-menu-bar {
   display: flex;

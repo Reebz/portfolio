@@ -13,22 +13,25 @@ window.startMatrixRain = function(canvas) {
   chars += '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
   function draw() {
+    // Fade the previous frame slightly so each stream leaves a trailing tail.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#0F0';
     ctx.font = fontSize + 'px monospace';
 
     for (var i = 0; i < drops.length; i++) {
-      var ch = chars[Math.floor(Math.random() * chars.length)];
       var x = i * fontSize;
       var y = drops[i] * fontSize;
 
-      // Head character: bright white
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(ch, x, y);
+      // Bright, near-white leading glyph.
+      ctx.fillStyle = '#CCFFCC';
+      ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y);
 
-      // Reset to bright green for next frame's trail (matches terminal text #00FF00)
-      ctx.fillStyle = '#00FF00';
+      // Repaint the glyph one cell up (last frame's head) in Matrix green, so
+      // the stream reads green as it falls instead of a fading white smear.
+      // Without this, the only painted glyph is the white head and the whole
+      // effect washes out to grey.
+      ctx.fillStyle = '#00FF41';
+      ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y - fontSize);
 
       if (y > H && Math.random() > 0.975) {
         drops[i] = 0;

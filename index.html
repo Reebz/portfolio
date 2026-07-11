@@ -19,6 +19,8 @@
   <link rel="stylesheet" href="apps/napster/napster.css">
   <link rel="stylesheet" href="apps/calculator/calc.css">
   <link rel="stylesheet" href="apps/minesweeper/game.css">
+  <link rel="stylesheet" href="apps/dos/dos.css">
+  <link rel="stylesheet" href="apps/clippy/clippy.css">
 </head>
 <body class="booting">
 <style>.booting{background:#000}.booting #desktop,.booting #taskbar,.booting #start-menu{visibility:hidden}</style>
@@ -387,7 +389,7 @@ Mitch</div>
       <div class="context-menu-separator" role="separator"></div>
       <button class="context-menu-item" role="menuitem" data-action="refresh">Refresh</button>
       <div class="context-menu-separator" role="separator"></div>
-      <button class="context-menu-item" role="menuitem" data-action="properties">Properties</button>
+      <button class="context-menu-item" role="menuitem" data-action="display-properties">Properties</button>
     </div>
 
     <div id="context-menu-titlebar" class="context-menu" role="menu" aria-label="Window context menu">
@@ -478,6 +480,14 @@ Mitch</div>
               <li><button class="start-menu-item" role="menuitem" data-app="paint">
                 <img src="img/icons/paint-sm.png" alt="" class="start-icon-16">
                 <span class="start-item-label">Paint</span>
+              </button></li>
+              <li><button class="start-menu-item" role="menuitem" data-app="dos">
+                <img src="img/icons/notepad-sm.png" alt="" class="start-icon-16">
+                <span class="start-item-label">MS-DOS Prompt</span>
+              </button></li>
+              <li><button class="start-menu-item" role="menuitem" data-app="displayProperties">
+                <img src="img/icons/mycomputer-sm.png" alt="" class="start-icon-16">
+                <span class="start-item-label">Display Properties</span>
               </button></li>
             </ul>
           </li>
@@ -576,6 +586,7 @@ Mitch</div>
   <script src="tooltips.js"></script>
   <script src="boot.js"></script>
   <script src="apps/matrix/rain.js"></script>
+  <script src="apps/clippy/clippy.js"></script>
   <script defer src="desktop.js"></script>
   <!-- Third-party stats; SRI omitted because gc.zgo.at updates count.js without notice. -->
   <script data-goatcounter="https://reebz.goatcounter.com/count"

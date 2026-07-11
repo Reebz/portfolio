@@ -214,6 +214,12 @@
     if (window.Sounds && typeof window.Sounds.armStartup === 'function') {
       window.Sounds.armStartup();
     }
+    // Notify desktop.js that a real boot finished (desktop only; boot is
+    // skipped on phones and when 'booted' is pre-seeded). Guarded so a missing
+    // handler can never wedge boot teardown.
+    if (typeof window.__onBootComplete === 'function') {
+      try { window.__onBootComplete(); } catch (e) { /* never block boot */ }
+    }
     overlay.style.transition = 'opacity 0.4s';
     overlay.style.opacity = '0';
     document.body.classList.remove('booting');
