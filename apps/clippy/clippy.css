@@ -1,0 +1,107 @@
+/* Clippy — the portfolio guide. Bottom-right, above the desktop but below
+   menus and the taskbar's own popups. Pointer-events scoped to the widget so
+   the desktop behind it stays clickable. */
+#clippy {
+  position: fixed;
+  right: 20px;
+  bottom: 44px;
+  z-index: 8500;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+#clippy.clippy-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#clippy .clippy-bubble,
+#clippy .clippy-char {
+  pointer-events: auto;
+}
+
+.clippy-bubble {
+  position: relative;
+  max-width: 240px;
+  background: #ffffe1;              /* classic tooltip yellow */
+  border: 1px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  padding: 10px 12px 10px 12px;
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  font-size: 12px;
+  color: #000;
+  border-radius: 6px;
+}
+/* Little speech-bubble tail pointing at the paperclip. */
+.clippy-bubble::after {
+  content: "";
+  position: absolute;
+  right: 26px;
+  bottom: -9px;
+  border-width: 9px 8px 0 8px;
+  border-style: solid;
+  border-color: #ffffe1 transparent transparent transparent;
+}
+.clippy-bubble::before {
+  content: "";
+  position: absolute;
+  right: 25px;
+  bottom: -10px;
+  border-width: 10px 9px 0 9px;
+  border-style: solid;
+  border-color: #000 transparent transparent transparent;
+}
+
+.clippy-text {
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.clippy-actions {
+  text-align: right;
+}
+.clippy-action {
+  min-width: 70px;
+  font-size: 11px;
+}
+
+.clippy-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 16px;
+  line-height: 1;
+  padding: 0;
+  font-size: 12px;
+}
+
+.clippy-char {
+  width: 52px;
+  height: 78px;
+  filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.3));
+}
+.clippy-char svg { display: block; }
+
+/* Idle blink — a subtle sway of the paperclip. Off under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  #clippy.clippy-show .clippy-char {
+    animation: clippy-sway 3.2s ease-in-out infinite;
+    transform-origin: bottom center;
+  }
+}
+@keyframes clippy-sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
+/* On phones the assistant would crowd the touch UI; boot is skipped there so
+   it normally never fires, but hide defensively if it ever does. */
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  #clippy { display: none; }
+}

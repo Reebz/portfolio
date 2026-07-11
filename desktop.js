@@ -897,6 +897,8 @@
       notepad: launchNotepad,
       napster: launchNapster,
       icq: launchICQ,
+      dos: launchDos,
+      displayProperties: launchDisplayProperties,
     };
   }
   // Late-bound table so all launchers are hoisted and visible when accessed.
@@ -919,6 +921,8 @@
       'window-run-dialog': L.run,
       'window-napster': L.napster,
       'window-icq': L.icq,
+      'window-dos': L.dos,
+      'window-display-properties': L.displayProperties,
     };
   }
 
@@ -2419,6 +2423,7 @@
         switch (act) {
           case 'refresh': location.reload(); break;
           case 'properties': openWindow('window-my-computer'); break;
+          case 'display-properties': launchDisplayProperties(); break;
           case 'arrange-icons':
             safeRemove('localStorage', 'icon-positions');
             layoutIcons();
@@ -2694,7 +2699,11 @@
         safeRemove('sessionStorage', 'booted');
         location.reload();
       }, 3000);
-    } else if (option.id === 'sd-restart' || option.id === 'sd-dos') {
+    } else if (option.id === 'sd-dos') {
+      // "Restart in MS-DOS mode" drops you into the real prompt instead of
+      // reloading — where TYPE RESUME.TXT and friends live.
+      launchDos();
+    } else if (option.id === 'sd-restart') {
       safeRemove('sessionStorage', 'booted');
       safeRemove('localStorage', 'cavaro-dismissed');
       location.reload();
@@ -3212,6 +3221,205 @@
     }
   }
 
+  // ============================================================
+  //  Enhancements: DOS prompt, Display Properties, BSOD, screensaver
+  // ============================================================
+
+  // Bridge for decoupled add-on scripts (e.g. clippy.js) that need to open
+  // windows or launch apps without reaching into this IIFE. Populated in init.
+  function launchByName(app) {
+    var l = getAppLaunchers()[app];
+    if (l) l();
+  }
+
+  // --- MS-DOS Prompt ---
+  function launchDos() {
+    var existing = document.getElementById('window-dos');
+    if (existing) {
+      openWindow('window-dos');
+      if (window.__initDos) window.__initDos(existing);
+      return;
+    }
+    var bodyHtml =
+      '<div class="dos-screen" id="dos-screen">' +
+        '<div id="dos-output"></div>' +
+        '<div class="dos-prompt-line">' +
+          '<span id="dos-cwd">C:\\&gt;</span>' +
+          '<input id="dos-input" type="text" autocomplete="off" autocapitalize="off" ' +
+            'autocorrect="off" spellcheck="false" aria-label="MS-DOS command line">' +
+        '</div>' +
+      '</div>';
+    createAppWindow('window-dos', 'MS-DOS Prompt', bodyHtml,
+      { width: '560px', height: '380px', bodyStyle: 'padding:0;overflow:hidden;' });
+    function runInit() {
+      if (window.__initDos) window.__initDos(document.getElementById('window-dos'));
+    }
+    loadAppScriptOnce('dos', 'apps/dos/dos.js', runInit);
+  }
+  // Let the DOS `EXIT` command close its own window.
+  window.__closeDos = function () { closeWindow('window-dos'); };
+
+  // --- Blue Screen of Death (deliberate easter egg; fully reversible) ---
+  function showBsod() {
+    if (document.getElementById('bsod-overlay')) return;
+    var el = document.createElement('div');
+    el.id = 'bsod-overlay';
+    el.setAttribute('role', 'alertdialog');
+    el.setAttribute('aria-label', 'A fatal exception has occurred');
+    el.innerHTML =
+      '<div class="bsod-inner">' +
+        '<div class="bsod-head">Windows</div>' +
+        '<p>A fatal exception 0E has occurred at 0028:C000E4F6 in VXD VMM(01) +' +
+        ' 00010E36. The current application will be terminated.</p>' +
+        '<p>*&nbsp; Press any key to terminate the current application.<br>' +
+        '*&nbsp; Press CTRL+ALT+DEL again to restart your computer. You will<br>' +
+        '&nbsp;&nbsp;&nbsp;lose any unsaved information in all applications.</p>' +
+        '<p class="bsod-cont">Press any key to continue <span class="bsod-blink">_</span></p>' +
+      '</div>';
+    document.body.appendChild(el);
+    function dismiss() {
+      document.removeEventListener('keydown', dismiss, true);
+      document.removeEventListener('pointerdown', dismiss, true);
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }
+    // Defer binding so the triggering keystroke (e.g. Enter typing CRASH in the
+    // DOS prompt) doesn't dismiss it on the same event.
+    setTimeout(function () {
+      document.addEventListener('keydown', dismiss, true);
+      document.addEventListener('pointerdown', dismiss, true);
+    }, 60);
+  }
+
+  // --- Display Properties (desktop color schemes) ---
+  var THEME_KEY = 'desktop-theme';
+  var THEMES = ['standard', 'rose', 'eggplant', 'high-contrast', 'hotdog'];
+  function applyTheme(name) {
+    if (!name || name === 'standard' || THEMES.indexOf(name) === -1) {
+      document.body.removeAttribute('data-theme');
+    } else {
+      document.body.setAttribute('data-theme', name);
+    }
+  }
+  function persistTheme(name) { safeSet(THEME_KEY, name || 'standard'); }
+  function applyStoredTheme() {
+    var t = safeRead('localStorage', THEME_KEY);
+    if (t) applyTheme(t);
+  }
+  function currentTheme() { return document.body.getAttribute('data-theme') || 'standard'; }
+
+  function launchDisplayProperties() {
+    var existing = document.getElementById('window-display-properties');
+    if (existing) { openWindow('window-display-properties'); return; }
+    var schemes = [
+      { v: 'standard', label: 'Windows Standard' },
+      { v: 'rose', label: 'Rose' },
+      { v: 'eggplant', label: 'Eggplant' },
+      { v: 'high-contrast', label: 'High Contrast Black' },
+      { v: 'hotdog', label: 'Hot Dog Stand' }
+    ];
+    var active = currentTheme();
+    var listHtml = '';
+    schemes.forEach(function (o) {
+      listHtml += '<option value="' + o.v + '"' + (o.v === active ? ' selected' : '') +
+        '>' + o.label + '</option>';
+    });
+    var bodyHtml =
+      '<div class="dispprop-body">' +
+        '<div class="dispprop-monitor" aria-hidden="true">' +
+          '<div class="dispprop-screen">' +
+            '<div class="dispprop-mini-win"><span></span></div>' +
+          '</div>' +
+          '<div class="dispprop-stand"></div>' +
+        '</div>' +
+        '<div class="field-row" style="margin-top:12px;align-items:center;">' +
+          '<label for="dispprop-scheme" style="margin-right:6px;">Scheme:</label>' +
+          '<select id="dispprop-scheme" style="flex:1;">' + listHtml + '</select>' +
+        '</div>' +
+        '<div style="text-align:right;margin-top:16px;">' +
+          '<button id="dispprop-ok" style="min-width:75px;">OK</button>' +
+          '<button id="dispprop-cancel" style="min-width:75px;margin-left:4px;">Cancel</button>' +
+          '<button id="dispprop-apply" style="min-width:75px;margin-left:4px;">Apply</button>' +
+        '</div>' +
+      '</div>';
+    // Transient so each open rebuilds fresh state — no stale closures or
+    // reused listeners across reopens.
+    createAppWindow('window-display-properties', 'Display Properties', bodyHtml,
+      { width: '320px', noResize: true, transient: true, bodyStyle: 'padding:14px;background:var(--win98-silver);' });
+
+    var winEl = document.getElementById('window-display-properties');
+    if (!winEl) return;
+    var select = winEl.querySelector('#dispprop-scheme');
+    var screen = winEl.querySelector('.dispprop-screen');
+    // Preview updates only the monitor thumbnail; the desktop changes only on
+    // Apply/OK — matching the real Win98 dialog. This keeps Cancel, Escape, and
+    // the title-bar Close side-effect-free (there is nothing to revert), which
+    // is why no revert bookkeeping is needed here.
+    function previewScheme(v) {
+      if (v && v !== 'standard') screen.setAttribute('data-theme', v);
+      else screen.removeAttribute('data-theme');
+    }
+    previewScheme(active);
+    select.addEventListener('change', function () { previewScheme(select.value); });
+    function commit() { applyTheme(select.value); persistTheme(select.value); }
+    winEl.querySelector('#dispprop-apply').addEventListener('click', commit);
+    winEl.querySelector('#dispprop-ok').addEventListener('click', function () {
+      commit();
+      closeWindow('window-display-properties');
+    });
+    winEl.querySelector('#dispprop-cancel').addEventListener('click', function () {
+      closeWindow('window-display-properties');
+    });
+  }
+
+  // --- Idle screensaver (Mystify) ---
+  var idleTimer = null;
+  var screensaverOn = false;
+  function idleMs() { return window.__IDLE_MS || 60000; }
+  function reducedMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  function showScreensaver() {
+    if (screensaverOn) return;
+    if (document.body.classList.contains('booting')) return;
+    if (reducedMotion()) return;
+    screensaverOn = true;
+    var overlay = document.createElement('div');
+    overlay.id = 'screensaver-overlay';
+    var canvas = document.createElement('canvas');
+    canvas.id = 'screensaver-canvas';
+    overlay.appendChild(canvas);
+    document.body.appendChild(overlay);
+    loadAppScriptOnce('mystify', 'apps/screensaver/mystify.js', function () {
+      // The overlay may have been dismissed before the script finished loading.
+      if (screensaverOn && window.startMystify) window.startMystify(canvas);
+    });
+  }
+  function dismissScreensaver() {
+    if (!screensaverOn) return;
+    screensaverOn = false;
+    var overlay = document.getElementById('screensaver-overlay');
+    if (overlay) {
+      var canvas = document.getElementById('screensaver-canvas');
+      if (canvas && window.stopMystify) window.stopMystify(canvas);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
+  }
+  function resetIdle() {
+    if (screensaverOn) dismissScreensaver();
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(showScreensaver, idleMs());
+  }
+  function armIdle() {
+    ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach(function (evt) {
+      document.addEventListener(evt, resetIdle, { passive: true });
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) { if (idleTimer) clearTimeout(idleTimer); }
+      else resetIdle();
+    });
+    resetIdle();
+  }
+
   // --- Init ---
   function init() {
     // Cache DOM references
@@ -3224,6 +3432,9 @@
     elClock = document.getElementById('clock');
     elVisitorCounter = document.getElementById('visitor-counter');
     elAnnouncer = document.getElementById('window-announcer');
+
+    // Apply any saved desktop color scheme before the desktop is shown.
+    applyStoredTheme();
 
     // Register system windows first
     registerSystemWindows();
@@ -3283,6 +3494,23 @@
       if (c && c.style.display !== 'none' && window.startMatrixRain && !c._rafId) {
         window.startMatrixRain(c);
       }
+    };
+
+    // --- Enhancements wiring ---
+    // Bridge for decoupled add-on scripts (clippy.js).
+    window.__win98 = { open: openWindow, launch: launchByName };
+    // Test/easter-egg seams.
+    window.__showBsod = showBsod;
+    window.__triggerScreensaver = showScreensaver;
+    window.__dismissScreensaver = dismissScreensaver;
+    // Arm the idle-screensaver timer.
+    armIdle();
+    // The Office Assistant only appears after a real boot completes (desktop
+    // only). boot.js calls this from completeBoot; boot is skipped on phones
+    // and whenever sessionStorage.booted is pre-seeded (all screenshot specs),
+    // so Clippy never shows in those captures.
+    window.__onBootComplete = function () {
+      if (window.__initClippy) setTimeout(window.__initClippy, 900);
     };
 
     // Apply hash on load

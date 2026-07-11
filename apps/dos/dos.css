@@ -1,0 +1,56 @@
+/* MS-DOS Prompt — green-on-black console styling. */
+#window-dos .window-body {
+  background: #000;
+}
+
+.dos-screen {
+  background: #000;
+  color: #c0c0c0;
+  font-family: "Perfect DOS VGA 437", "Lucida Console", "Courier New", monospace;
+  font-size: 15px;
+  line-height: 1.25;
+  padding: 6px 8px;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  cursor: text;
+}
+
+.dos-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dos-prompt-line {
+  display: flex;
+  align-items: baseline;
+}
+
+#dos-cwd {
+  white-space: pre;
+  flex: 0 0 auto;
+}
+
+#dos-input {
+  flex: 1 1 auto;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #c0c0c0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  padding: 0 0 0 6px;
+  margin: 0;
+  caret-color: #c0c0c0;
+}
+
+/* Fallback blinking block cursor rendered next to the input. */
+.dos-cursor {
+  display: inline-block;
+  width: 9px;
+  height: 1em;
+  background: #c0c0c0;
+  animation: dos-cursor-blink 1s steps(1) infinite;
+  vertical-align: text-bottom;
+}
