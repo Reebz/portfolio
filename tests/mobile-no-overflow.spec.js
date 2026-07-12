@@ -186,6 +186,7 @@ test.describe('Mobile — no overflow on chrome containers', () => {
     await page.locator('[data-app="run"]').tap();
     await page.waitForTimeout(250);
     await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'open');
+    await page.fill('#run-input', 'neo');
     await page.locator('#window-run-dialog .run-ok-btn').tap();
 
     const matrix = page.locator('#window-matrix');

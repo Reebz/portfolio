@@ -161,3 +161,37 @@ test.describe('Clippy office assistant', () => {
     await expect(page.locator('#clippy')).toHaveCount(0);
   });
 });
+
+test.describe('Run dialog command parsing', () => {
+  async function openRun(page) {
+    await page.locator('#start-button').click();
+    await page.locator('[data-app="run"]').click();
+    await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'open');
+  }
+
+  test('cmd opens the real MS-DOS Prompt (not the Matrix)', async ({ page }) => {
+    await bootedDesktop(page);
+    await openRun(page);
+    await page.fill('#run-input', 'cmd');
+    await page.locator('#window-run-dialog .run-ok-btn').click();
+    await expect(page.locator('#window-dos')).toHaveAttribute('data-state', 'open');
+    await expect(page.locator('#window-matrix')).toHaveCount(0);
+  });
+
+  test('neo opens the Matrix terminal', async ({ page }) => {
+    await bootedDesktop(page);
+    await openRun(page);
+    await page.fill('#run-input', 'neo');
+    await page.locator('#window-run-dialog .run-ok-btn').click();
+    await expect(page.locator('#window-matrix')).toBeVisible();
+  });
+
+  test('unknown command shows an error and keeps the dialog open', async ({ page }) => {
+    await bootedDesktop(page);
+    await openRun(page);
+    await page.fill('#run-input', 'wordperfect');
+    await page.locator('#window-run-dialog .run-ok-btn').click();
+    await expect(page.locator('#run-error')).toBeVisible();
+    await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'open');
+  });
+});

@@ -2995,9 +2995,10 @@
       '<div style="font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;margin-bottom:8px;">' +
         'Type the name of a program, folder, document, or Internet resource, and Windows will open it for you.' +
       '</div>' +
+      '<div id="run-error" style="display:none;font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;color:#000;margin-bottom:8px;"></div>' +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
         '<label style="font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;font-weight:bold;">Open:</label>' +
-        '<input type="text" value="cmd" readonly style="flex:1;font-size:11px;background:#fff;">' +
+        '<input type="text" id="run-input" value="cmd" style="flex:1;font-size:11px;background:#fff;">' +
       '</div>' +
       '<div style="text-align:right;">' +
         '<button class="run-ok-btn" style="min-width:75px;">OK</button>' +
@@ -3009,10 +3010,35 @@
       { width: '320px', noResize: true, bodyStyle: 'padding:12px;background:#c0c0c0;' });
 
     var win = document.getElementById(runId);
-    win.querySelector('.run-ok-btn').addEventListener('click', function() {
-      closeWindow(runId);
-      launchMatrixTerminal();
+    var input = win.querySelector('#run-input');
+    var errEl = win.querySelector('#run-error');
+
+    // The Run box parses its input now: 'cmd' opens the real MS-DOS Prompt, the
+    // hidden 'neo' incantation opens the Matrix terminal, anything else gets an
+    // authentic "cannot find" error and the dialog stays open.
+    function submitRun() {
+      var cmd = (input.value || '').trim().toLowerCase();
+      if (cmd === 'cmd' || cmd === 'command' || cmd === 'command.com') {
+        closeWindow(runId);
+        launchDos();
+        return;
+      }
+      if (cmd === 'neo') {
+        closeWindow(runId);
+        launchMatrixTerminal();
+        return;
+      }
+      errEl.textContent = "Cannot find '" + (input.value || '') +
+        "'. Make sure you typed the name correctly, and then try again.";
+      errEl.style.display = 'block';
+    }
+    win.querySelector('.run-ok-btn').addEventListener('click', submitRun);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); submitRun(); }
     });
+    // Preselect the default so a keystroke replaces it, like the real Run box.
+    input.focus();
+    input.select();
   }
 
   function launchNapster() {
