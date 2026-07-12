@@ -2218,11 +2218,13 @@
 
       elIconGrid.appendChild(icon);
 
-      // Hide Cavaro icon if dismissed within 48h
+      // Hide Cavaro icon if dismissed within the last 6 hours. A quick refresh
+      // right after dismissing still respects the dismissal, but a later
+      // revisit brings the icon back (a Shut Down > Restart clears it at once).
       if (project.type === 'cavaro') {
         var dismissed = parseInt(safeRead('localStorage', 'cavaro-dismissed')) || 0;
         var hoursSince = (Date.now() - dismissed) / (1000 * 60 * 60);
-        if (dismissed > 0 && hoursSince < 48) {
+        if (dismissed > 0 && hoursSince < 6) {
           icon.style.display = 'none';
         }
       }
