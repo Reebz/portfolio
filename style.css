@@ -104,6 +104,14 @@ body {
   right: 0;
   bottom: var(--taskbar-height);
   padding: 8px;
+  /* Isolate icons into their own stacking context so the drag ghost (promoted
+     to its own layer by opacity:0.7 during icon drag) can never paint over the
+     fixed #taskbar (z:9000). Surfaces on Safari without CSS zoom, where body's
+     transform:scale fallback makes the fixed taskbar's layer mis-composite
+     below the promoted icon layer. #icon-grid holds only icons, so this is
+     safe — unlike #desktop, whose context menus (z:9600) must stay above the
+     taskbar. */
+  isolation: isolate;
 }
 
 .desktop-icon {
@@ -661,6 +669,13 @@ body[data-theme="high-contrast"] .window .title-bar { background: #000; }
 
 body[data-theme="hotdog"] #desktop { background: #c00000; }
 body[data-theme="hotdog"] .window .title-bar { background: linear-gradient(90deg, #ff0000, #ff8c00); }
+
+/* Dimmed inactive title bars per theme — the active recolor above outranks
+   98.css .title-bar.inactive, so give inactive windows their own muted tone. */
+body[data-theme="rose"] .window .title-bar.inactive { background: linear-gradient(90deg, #6a4453, #a888a0); }
+body[data-theme="eggplant"] .window .title-bar.inactive { background: linear-gradient(90deg, #3a3446, #7a7290); }
+body[data-theme="high-contrast"] .window .title-bar.inactive { background: #555; }
+body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradient(90deg, #a85030, #c08050); }
 
 /* Preview scheme: the Display Properties monitor thumbnail reflects the
    currently-selected (not yet committed) scheme via its own data-theme. */
@@ -1396,6 +1411,45 @@ body[data-theme="hotdog"] .window .title-bar { background: linear-gradient(90deg
   margin: 0;
   max-width: 280px;
   line-height: 1.4;
+}
+
+/* Paint loading overlay — shown above the jspaint.app iframe on first open so
+   the cold-connection download reads as a Win98 progress panel, not a blank
+   frame. Faded out when the iframe fires 'load' (see launchPaint). */
+.paint-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--win98-silver);
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  font-size: 12px;
+  color: var(--win98-black);
+  transition: opacity 0.25s ease;
+}
+.paint-loading.is-loaded {
+  opacity: 0;
+  pointer-events: none;
+}
+.paint-loading-icon {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+.paint-loading-bar {
+  width: 180px;
+}
+.paint-loading-bar > .progress-indicator-bar {
+  width: 0;
+  animation: paint-loading-fill 2s steps(10, end) infinite;
+}
+@keyframes paint-loading-fill {
+  from { width: 0; }
+  to { width: 100%; }
 }
 
 /* === Context Menus === */

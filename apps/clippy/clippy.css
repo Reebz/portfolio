@@ -59,6 +59,7 @@
 
 .clippy-text {
   margin: 0 0 8px 0;
+  padding-right: 18px; /* keep text clear of the close button on every line */
   line-height: 1.4;
 }
 
@@ -66,7 +67,8 @@
   text-align: right;
 }
 .clippy-action {
-  min-width: 70px;
+  min-width: 60px;
+  padding: 0 10px;
   font-size: 11px;
 }
 
@@ -74,11 +76,18 @@
   position: absolute;
   top: 4px;
   right: 4px;
-  width: 18px;
-  height: 16px;
+  /* 98.css sets button{min-width:75px;min-height:23px}; override it so the X is
+     the canonical 16x14 Win98 title-bar-control size, not a giant button. */
+  min-width: 0;
+  min-height: 0;
+  width: 16px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
   padding: 0;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .clippy-char {

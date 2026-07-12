@@ -36,6 +36,7 @@
   background: transparent;
   border: none;
   outline: none;
+  box-shadow: none; /* clear 98.css sunken inset frame so the prompt is seamless */
   color: #c0c0c0;
   font-family: inherit;
   font-size: inherit;

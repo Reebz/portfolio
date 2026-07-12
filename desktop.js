@@ -2790,18 +2790,41 @@
     // memory artifacts) and render a Win98-styled "best on desktop" note.
     // Tablets keep the iframe — they have the room jspaint needs.
     var isPhoneTouch = window.matchMedia('(hover: none) and (pointer: coarse) and (max-width: 767px)').matches;
+    // Only true on a fresh create; reopening reuses the loaded iframe.
+    var firstOpen = !document.getElementById('window-paint');
     var paintBody = isPhoneTouch
       ? '<div class="paint-mobile-note">' +
           '<img src="img/icons/paint-sm.png" alt="" class="paint-mobile-note-icon">' +
           '<p>Paint runs best on a desktop with a mouse — open this site on a larger screen for the full experience.</p>' +
         '</div>'
+      // Loading panel sits above the iframe so the cold-connection download of
+      // jspaint.app shows a Win98 progress bar instead of a blank white frame;
+      // faded out once the iframe fires 'load' (wired below).
       // sandbox set conservatively — re-evaluate if jspaint breaks. Omits
       // allow-top-navigation so the embedded app can't redirect the host
       // page. allow-popups + allow-popups-to-escape-sandbox cover the
       // "Open file in new tab" affordance some jspaint plugins use.
-      : '<iframe src="https://jspaint.app" sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox allow-forms" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
+      : '<div class="paint-loading" aria-hidden="true">' +
+          '<img src="img/icons/paint-sm.png" alt="" class="paint-loading-icon">' +
+          '<p>Loading Paint…</p>' +
+          '<div class="progress-indicator segmented paint-loading-bar"><span class="progress-indicator-bar"></span></div>' +
+        '</div>' +
+        '<iframe src="https://jspaint.app" sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox allow-forms" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
     createAppWindow('window-paint', 'untitled - Paint', paintBody,
-      { width: '640px', height: '480px', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;' });
+      { width: '640px', height: '480px', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;position:relative;' });
+
+    // Fade the loading panel out once jspaint.app loads. The iframe 'load' fires
+    // for cross-origin frames too, and can't have fired before this synchronous
+    // handler attaches. Attached from JS (no inline onload — script-src has no
+    // 'unsafe-inline').
+    if (firstOpen && !isPhoneTouch) {
+      var paintWin = document.getElementById('window-paint');
+      var frame = paintWin && paintWin.querySelector('iframe');
+      var overlay = paintWin && paintWin.querySelector('.paint-loading');
+      if (frame && overlay) {
+        frame.addEventListener('load', function() { overlay.classList.add('is-loaded'); });
+      }
+    }
   }
 
   function launchMinesweeper() {
@@ -3123,16 +3146,17 @@
           textEl.innerHTML = text + CURSOR;
           if (callback) callback();
         }
-      }, 120);
+      }, 60);
     }
 
-    // Phase 1: type "..." then hold 3 seconds
+    // Phase 1: type "..." then hold 0.8s. Holds trimmed (was 3s/3s/4s) so the
+    // rain lands in ~4s instead of ~13s — the long intro made it feel broken.
     typeText('...', function() {
       track(setTimeout, function() {
-        // Phase 2: type "Knock, knock, Neo." then hold 3 seconds
+        // Phase 2: type "Knock, knock, Neo." then hold 1.2 seconds
         typeText('Knock, knock, Neo.', function() {
           track(setTimeout, function() {
-            // Phase 3: type "..." then hold 4 seconds
+            // Phase 3: type "..." then hold 0.9 seconds
             typeText('...', function() {
               track(setTimeout, function() {
                 // Phase 4: Matrix rain. Skip the start if the window was
@@ -3147,11 +3171,11 @@
                 if (visible && window.startMatrixRain) {
                   window.startMatrixRain(canvasEl);
                 }
-              }, 4000);
+              }, 900);
             });
-          }, 3000);
+          }, 1200);
         });
-      }, 3000);
+      }, 800);
     });
   }
 
@@ -3382,6 +3406,9 @@
     if (screensaverOn) return;
     if (document.body.classList.contains('booting')) return;
     if (reducedMotion()) return;
+    // Never cover a terminal overlay (shutdown "safe to turn off" / BSOD),
+    // which sit above the screensaver in the z-order.
+    if (document.getElementById('shutdown-overlay') || document.getElementById('bsod-overlay')) return;
     screensaverOn = true;
     var overlay = document.createElement('div');
     overlay.id = 'screensaver-overlay';
@@ -3503,8 +3530,10 @@
     window.__showBsod = showBsod;
     window.__triggerScreensaver = showScreensaver;
     window.__dismissScreensaver = dismissScreensaver;
-    // Arm the idle-screensaver timer.
-    armIdle();
+    // Arm the idle-screensaver timer — desktop/tablet only. On phones a
+    // surprise full-screen takeover after 60s of reading is disruptive (and
+    // Clippy is skipped there for the same reason), so leave it off.
+    if (!isMobile()) armIdle();
     // The Office Assistant only appears after a real boot completes (desktop
     // only). boot.js calls this from completeBoot; boot is skipped on phones
     // and whenever sessionStorage.booted is pre-seeded (all screenshot specs),
