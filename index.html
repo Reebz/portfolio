@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://gc.zgo.at https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://reebz.goatcounter.com https://img.youtube.com https://i.ytimg.com; connect-src 'self' https://formspree.io https://reebz.goatcounter.com; frame-src 'self' https://jspaint.app https://www.youtube.com;">
+  <!-- Warm DNS+TCP+TLS to jspaint.app before Paint opens so the embedded app
+       downloads over an already-open connection. Allowed by CSP (frame-src
+       lists jspaint.app; preconnect isn't a fetch so connect-src doesn't gate it). -->
+  <link rel="preconnect" href="https://jspaint.app">
+  <link rel="dns-prefetch" href="https://jspaint.app">
   <title>Portfolio 98 | PII-233mHz 32MB RAM Voodoo2 GFX</title>
   <meta name="description" content="Portfolio 98 -- a Windows 98 desktop experience showcasing software and AI projects. PII-233mHz 32MB RAM Voodoo2 GFX.">
   <meta name="theme-color" content="#008080">
@@ -457,14 +462,14 @@ Mitch</div>
     <ul class="start-menu-items">
       <li class="has-submenu">
         <button class="start-menu-item start-menu-item-lg" role="menuitem" aria-haspopup="true" aria-expanded="false">
-          <img src="img/icons/programs-32.png" alt="" class="start-icon-32">
+          <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%20shape-rendering='crispEdges'%3E%3Crect%20x='4'%20y='7'%20width='12'%20height='5'%20fill='%23000'/%3E%3Crect%20x='5'%20y='8'%20width='10'%20height='4'%20fill='%23d99a2b'/%3E%3Crect%20x='2'%20y='10'%20width='28'%20height='19'%20fill='%23000'/%3E%3Crect%20x='3'%20y='11'%20width='26'%20height='17'%20fill='%23ffd264'/%3E%3Crect%20x='3'%20y='11'%20width='26'%20height='2'%20fill='%23ffe6a2'/%3E%3Crect%20x='3'%20y='25'%20width='26'%20height='3'%20fill='%23e0a838'/%3E%3Crect%20x='12'%20y='13'%20width='17'%20height='14'%20fill='%23000'/%3E%3Crect%20x='13'%20y='14'%20width='15'%20height='3'%20fill='%23000080'/%3E%3Crect%20x='13'%20y='14'%20width='15'%20height='1'%20fill='%231084d0'/%3E%3Crect%20x='13'%20y='17'%20width='15'%20height='9'%20fill='%23fff'/%3E%3Crect%20x='15'%20y='19'%20width='3'%20height='3'%20fill='%23d40000'/%3E%3Crect%20x='20'%20y='19'%20width='3'%20height='3'%20fill='%230000c8'/%3E%3Crect%20x='15'%20y='23'%20width='3'%20height='2'%20fill='%23008000'/%3E%3Crect%20x='20'%20y='23'%20width='6'%20height='1'%20fill='%23808080'/%3E%3C/svg%3E" alt="" class="start-icon-32">
           <span class="start-item-label">Programs</span>
           <span class="submenu-arrow" aria-hidden="true">&#9656;</span>
         </button>
         <ul class="start-submenu" role="menu">
           <li class="has-submenu">
             <button class="start-menu-item" role="menuitem" aria-haspopup="true" aria-expanded="false">
-              <img src="img/icons/notepad-sm.png" alt="" class="start-icon-16">
+              <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20x='2'%20y='3'%20width='6'%20height='3'%20fill='%23000'/%3E%3Crect%20x='3'%20y='4'%20width='4'%20height='2'%20fill='%23d99a2b'/%3E%3Crect%20x='1'%20y='5'%20width='14'%20height='10'%20fill='%23000'/%3E%3Crect%20x='2'%20y='6'%20width='12'%20height='8'%20fill='%23ffd264'/%3E%3Crect%20x='2'%20y='6'%20width='12'%20height='1'%20fill='%23ffe6a2'/%3E%3Crect%20x='6'%20y='7'%20width='9'%20height='7'%20fill='%23000'/%3E%3Crect%20x='7'%20y='8'%20width='7'%20height='2'%20fill='%23000080'/%3E%3Crect%20x='7'%20y='10'%20width='7'%20height='3'%20fill='%23fff'/%3E%3Crect%20x='8'%20y='11'%20width='2'%20height='1'%20fill='%23d40000'/%3E%3Crect%20x='11'%20y='11'%20width='2'%20height='1'%20fill='%230000c8'/%3E%3C/svg%3E" alt="" class="start-icon-16">
               <span class="start-item-label">Accessories</span>
               <span class="submenu-arrow" aria-hidden="true">&#9656;</span>
             </button>
@@ -482,11 +487,11 @@ Mitch</div>
                 <span class="start-item-label">Paint</span>
               </button></li>
               <li><button class="start-menu-item" role="menuitem" data-app="dos">
-                <img src="img/icons/notepad-sm.png" alt="" class="start-icon-16">
+                <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20x='1'%20y='2'%20width='14'%20height='12'%20fill='%23c0c0c0'/%3E%3Crect%20x='2'%20y='3'%20width='12'%20height='10'%20fill='%23000'/%3E%3Crect%20x='3'%20y='4'%20width='2'%20height='2'%20fill='%23ff5555'/%3E%3Crect%20x='5'%20y='4'%20width='2'%20height='2'%20fill='%233cd23c'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='2'%20fill='%234b8cff'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='2'%20fill='%23ffd23b'/%3E%3Crect%20x='8'%20y='5'%20width='5'%20height='1'%20fill='%23c0c0c0'/%3E%3Crect%20x='8'%20y='7'%20width='4'%20height='1'%20fill='%23808080'/%3E%3Crect%20x='3'%20y='10'%20width='9'%20height='1'%20fill='%23c0c0c0'/%3E%3C/svg%3E" alt="" class="start-icon-16">
                 <span class="start-item-label">MS-DOS Prompt</span>
               </button></li>
               <li><button class="start-menu-item" role="menuitem" data-app="displayProperties">
-                <img src="img/icons/mycomputer-sm.png" alt="" class="start-icon-16">
+                <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20x='1'%20y='1'%20width='14'%20height='11'%20fill='%23000'/%3E%3Crect%20x='2'%20y='2'%20width='12'%20height='9'%20fill='%23c0c0c0'/%3E%3Crect%20x='3'%20y='3'%20width='10'%20height='7'%20fill='%233a6ea5'/%3E%3Crect%20x='4'%20y='4'%20width='5'%20height='4'%20fill='%23fff'/%3E%3Crect%20x='4'%20y='4'%20width='5'%20height='1'%20fill='%23000080'/%3E%3Crect%20x='10'%20y='5'%20width='1'%20height='1'%20fill='%23d40000'/%3E%3Crect%20x='11'%20y='5'%20width='1'%20height='1'%20fill='%2300a800'/%3E%3Crect%20x='10'%20y='7'%20width='1'%20height='1'%20fill='%23f0c000'/%3E%3Crect%20x='11'%20y='7'%20width='1'%20height='1'%20fill='%230000c8'/%3E%3Crect%20x='6'%20y='12'%20width='4'%20height='2'%20fill='%23a0a0a0'/%3E%3Crect%20x='5'%20y='13'%20width='6'%20height='1'%20fill='%23808080'/%3E%3Crect%20x='4'%20y='14'%20width='8'%20height='1'%20fill='%23000'/%3E%3C/svg%3E" alt="" class="start-icon-16">
                 <span class="start-item-label">Display Properties</span>
               </button></li>
             </ul>

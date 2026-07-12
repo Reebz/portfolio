@@ -62,7 +62,7 @@
     host.setAttribute('role', 'complementary');
     host.setAttribute('aria-label', 'Office Assistant');
     host.innerHTML =
-      '<div class="clippy-bubble" role="dialog" aria-live="polite">' +
+      '<div class="clippy-bubble" aria-live="polite">' +
         '<button class="clippy-close" aria-label="Dismiss assistant" title="Go away">&times;</button>' +
         '<p class="clippy-text"></p>' +
         '<div class="clippy-actions">' +
