@@ -424,7 +424,8 @@ test.describe('U1 — HIGH-severity bug fixes', () => {
     await page.click('[data-app="run"]');
     await page.waitForTimeout(300);
     await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'open');
-    // Click OK — should close the Run dialog and launch the Matrix terminal
+    // Type the 'neo' incantation, then OK — closes Run and launches the Matrix terminal
+    await page.fill('#run-input', 'neo');
     await page.click('#window-run-dialog .run-ok-btn');
     await page.waitForTimeout(500);
     await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'closed');

@@ -124,6 +124,7 @@ test.describe('Console error gate', () => {
     await page.click('[data-app="run"]');
     await page.waitForTimeout(300);
     await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'open');
+    await page.fill('#run-input', 'neo');
     await page.click('#window-run-dialog .run-ok-btn');
     await page.waitForTimeout(600);
     await expect(page.locator('#window-matrix')).toBeVisible();
