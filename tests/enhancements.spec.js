@@ -195,3 +195,27 @@ test.describe('Run dialog command parsing', () => {
     await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'open');
   });
 });
+
+test.describe('Cavaro icon timed self-destruct', () => {
+  // Seed cavaro-dismissed to a timestamp `hoursAgo` in the past (null clears it),
+  // reload, and return the Cavaro desktop icon locator.
+  async function loadWithDismissal(page, hoursAgo) {
+    await mockGoatCounter(page);
+    await page.goto('/');
+    await page.evaluate((h) => {
+      sessionStorage.setItem('booted', '1');
+      if (h === null) localStorage.removeItem('cavaro-dismissed');
+      else localStorage.setItem('cavaro-dismissed', String(Date.now() - h * 3600 * 1000));
+    }, hoursAgo);
+    await page.goto('/');
+    await expect(page.locator('#desktop')).toBeVisible();
+    return page.locator('[data-window-id="window-cavaro"]');
+  }
+
+  test('hidden right after dismissal, returns after the 6h window', async ({ page }) => {
+    await expect(await loadWithDismissal(page, null)).toBeVisible(); // never dismissed
+    await expect(await loadWithDismissal(page, 0)).toBeHidden();     // just dismissed
+    await expect(await loadWithDismissal(page, 5)).toBeHidden();     // within window
+    await expect(await loadWithDismissal(page, 7)).toBeVisible();    // past window -> returns
+  });
+});
