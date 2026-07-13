@@ -3382,6 +3382,10 @@
       document.removeEventListener('pointerdown', reboot, true);
       if (rebootTimer) { clearTimeout(rebootTimer); rebootTimer = null; }
       safeRemove('sessionStorage', 'booted');
+      // Strip any open-window hash (openWindow -> updateHash sets one) before
+      // reloading. boot.js skips the sequence when a hash is present, so without
+      // this the reload would drop straight back to the desktop.
+      history.replaceState(null, '', window.location.pathname);
       location.reload();
     }
     // Defer binding so the triggering keystroke (e.g. Enter typing VAULT in the
