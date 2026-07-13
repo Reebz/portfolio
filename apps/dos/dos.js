@@ -38,7 +38,7 @@
       '========\r\n' +
       'The desktop icons are the portfolio. Double-click any of them.\r\n' +
       'There is more hidden around than you might expect. Try RUN, or the\r\n' +
-      'Start menu. And yes -- CRASH is a real command in here.'
+      'Start menu. And yes -- VAULT is a real command in here.'
   };
 
   // Fake directory listing metadata (size only; dates are cosmetic).
@@ -53,7 +53,7 @@
     '  ECHO <text>      Print text\r\n' +
     '  HELP             This list\r\n' +
     '  EXIT             Close the prompt\r\n' +
-    '  CRASH            ...do not run this command';
+    '  VAULT            Passwords and API tokens';
 
   var BANNER =
     'Microsoft(R) Windows 98\r\n' +
@@ -170,10 +170,9 @@
         case 'EXIT':
           if (window.__closeDos) window.__closeDos();
           return;
-        case 'CRASH':
-        case 'BSOD':
+        case 'VAULT':
           if (window.__showBsod) window.__showBsod();
-          else print('...nothing happened. (BSOD unavailable)');
+          else print('...nothing happened.');
           return;
         case 'WIN':
           print('You are already in Windows. This is as good as it gets.');
