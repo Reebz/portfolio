@@ -56,26 +56,28 @@ test.describe('MS-DOS Prompt', () => {
     await expect(page.locator('#dos-output')).toContainText('Version 4.10.1998');
   });
 
-  test('CRASH command triggers the BSOD', async ({ page }) => {
+  test('VAULT command triggers the BSOD', async ({ page }) => {
     await mockGoatCounter(page);
     await page.goto('/#window-dos');
     const input = page.locator('#dos-input');
-    await input.fill('crash');
+    await input.fill('vault');
     await input.press('Enter');
     await expect(page.locator('#bsod-overlay')).toBeVisible();
   });
 });
 
 test.describe('BSOD easter egg', () => {
-  test('shows and is dismissed by any key', async ({ page }) => {
+  test('shows the extra line and reboots into the boot sequence on any key', async ({ page }) => {
     await bootedDesktop(page);
     await page.evaluate(() => window.__showBsod());
     await expect(page.locator('#bsod-overlay')).toBeVisible();
     await expect(page.locator('#bsod-overlay')).toContainText('fatal exception');
-    // Listeners bind after a short defer; wait past it then press a key.
+    await expect(page.locator('#bsod-overlay')).toContainText('coming for you');
+    // Listeners bind after a short defer; wait past it, then a key reboots the
+    // machine (booted flag cleared + reload -> boot.js replays the BIOS boot).
     await page.waitForTimeout(120);
     await page.keyboard.press('Escape');
-    await expect(page.locator('#bsod-overlay')).toHaveCount(0);
+    await expect(page.locator('#boot-overlay')).toBeVisible({ timeout: 6000 });
   });
 });
 
@@ -193,6 +195,20 @@ test.describe('Run dialog command parsing', () => {
     await page.locator('#window-run-dialog .run-ok-btn').click();
     await expect(page.locator('#run-error')).toBeVisible();
     await expect(page.locator('#window-run-dialog')).toHaveAttribute('data-state', 'open');
+  });
+
+  test('recent-commands dropdown: neo is second and runs when picked', async ({ page }) => {
+    await bootedDesktop(page);
+    await openRun(page);
+    await page.locator('#run-history-btn').click();
+    await expect(page.locator('#run-history')).toBeVisible();
+    const items = page.locator('#run-history li');
+    await expect(items.nth(0)).toHaveText('cmd');   // default, first
+    await expect(items.nth(1)).toHaveText('neo');    // second position
+    await items.nth(1).click();
+    await expect(page.locator('#run-input')).toHaveValue('neo');
+    await page.locator('#window-run-dialog .run-ok-btn').click();
+    await expect(page.locator('#window-matrix')).toBeVisible();
   });
 });
 

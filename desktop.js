@@ -3000,7 +3000,20 @@
       '<div id="run-error" style="display:none;font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;color:#000;margin-bottom:8px;"></div>' +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
         '<label style="font-family:\'Pixelated MS Sans Serif\',Arial;font-size:11px;font-weight:bold;">Open:</label>' +
-        '<input type="text" id="run-input" value="cmd" style="flex:1;font-size:11px;background:#fff;">' +
+        '<div class="run-combo">' +
+          '<input type="text" id="run-input" value="cmd" autocomplete="off">' +
+          '<button type="button" id="run-history-btn" class="run-history-btn" aria-label="Recent commands" aria-expanded="false">&#9660;</button>' +
+          '<ul id="run-history" class="run-history" role="listbox" style="display:none;">' +
+            '<li role="option" data-cmd="cmd">cmd</li>' +
+            '<li role="option" data-cmd="neo">neo</li>' +
+            '<li role="option" data-cmd="C:\\WINDOWS">C:\\WINDOWS</li>' +
+            '<li role="option" data-cmd="regedit">regedit</li>' +
+            '<li role="option" data-cmd="notepad">notepad</li>' +
+            '<li role="option" data-cmd="explorer">explorer</li>' +
+            '<li role="option" data-cmd="winipcfg">winipcfg</li>' +
+            '<li role="option" data-cmd="sol">sol</li>' +
+          '</ul>' +
+        '</div>' +
       '</div>' +
       '<div style="text-align:right;">' +
         '<button class="run-ok-btn" style="min-width:75px;">OK</button>' +
@@ -3014,6 +3027,35 @@
     var win = document.getElementById(runId);
     var input = win.querySelector('#run-input');
     var errEl = win.querySelector('#run-error');
+
+    // "Recent commands" dropdown (a fake MRU history). Clicking the arrow drops
+    // the list; clicking an item makes it the runnable command. 'cmd' is first
+    // (the default); 'neo' sits second so the Matrix incantation is findable.
+    var historyBtn = win.querySelector('#run-history-btn');
+    var historyList = win.querySelector('#run-history');
+    function closeHistory() {
+      historyList.style.display = 'none';
+      historyBtn.setAttribute('aria-expanded', 'false');
+    }
+    historyBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var open = historyList.style.display !== 'none';
+      historyList.style.display = open ? 'none' : 'block';
+      historyBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+    historyList.addEventListener('click', function(e) {
+      var li = e.target.closest('li[data-cmd]');
+      if (!li) return;
+      input.value = li.getAttribute('data-cmd');
+      closeHistory();
+      input.focus();
+    });
+    // Any click that isn't the arrow or the list closes the dropdown.
+    document.addEventListener('mousedown', function(e) {
+      if (e.target !== historyBtn && !historyBtn.contains(e.target) && !historyList.contains(e.target)) {
+        closeHistory();
+      }
+    });
 
     // The Run box parses its input now: 'cmd' opens the real MS-DOS Prompt, the
     // hidden 'neo' incantation opens the Matrix terminal, anything else gets an
@@ -3177,33 +3219,35 @@
       }, 60);
     }
 
-    // Phase 1: type "..." then hold 0.8s. Holds trimmed (was 3s/3s/4s) so the
-    // rain lands in ~4s instead of ~13s — the long intro made it feel broken.
-    typeText('...', function() {
+    // Intro mirrors the film's opening terminal text: each line types out,
+    // holds ~1.5s so it can be read, then the next replaces it. After the last
+    // line a full 3s beat lands before the rain.
+    typeText('Wake up, Neo...', function() {
       track(setTimeout, function() {
-        // Phase 2: type "Knock, knock, Neo." then hold 1.2 seconds
-        typeText('Knock, knock, Neo.', function() {
+        typeText('The Matrix has you...', function() {
           track(setTimeout, function() {
-            // Phase 3: type "..." then hold 0.9 seconds
-            typeText('...', function() {
+            typeText('Follow the white rabbit.', function() {
               track(setTimeout, function() {
-                // Phase 4: Matrix rain. Skip the start if the window was
-                // minimized mid-intro — rAF keeps firing for display:none
-                // windows, so starting here would burn CPU on a hidden
-                // canvas. The restore hook (canvas shown && !_rafId) starts
-                // the rain on restore instead.
-                textEl.style.display = 'none';
-                canvasEl.style.display = 'block';
-                var mw = windows.get('window-matrix');
-                var visible = mw && (mw.state === 'open' || mw.state === 'maximized');
-                if (visible && window.startMatrixRain) {
-                  window.startMatrixRain(canvasEl);
-                }
-              }, 900);
+                typeText('Knock, knock, Neo.', function() {
+                  track(setTimeout, function() {
+                    // Matrix rain. Skip the start if the window was minimized
+                    // mid-intro — rAF keeps firing for display:none windows, so
+                    // starting here would burn CPU on a hidden canvas. The
+                    // restore hook (canvas shown && !_rafId) starts it instead.
+                    textEl.style.display = 'none';
+                    canvasEl.style.display = 'block';
+                    var mw = windows.get('window-matrix');
+                    var visible = mw && (mw.state === 'open' || mw.state === 'maximized');
+                    if (visible && window.startMatrixRain) {
+                      window.startMatrixRain(canvasEl);
+                    }
+                  }, 3000);
+                });
+              }, 1500);
             });
-          }, 1200);
+          }, 1500);
         });
-      }, 800);
+      }, 1500);
     });
   }
 
@@ -3325,20 +3369,27 @@
         ' 00010E36. The current application will be terminated.</p>' +
         '<p>*&nbsp; Press any key to terminate the current application.<br>' +
         '*&nbsp; Press CTRL+ALT+DEL again to restart your computer. You will<br>' +
-        '&nbsp;&nbsp;&nbsp;lose any unsaved information in all applications.</p>' +
+        '&nbsp;&nbsp;&nbsp;lose any unsaved information in all applications.<br>' +
+        '*&nbsp; Neo, get out, they\'re coming for you.</p>' +
         '<p class="bsod-cont">Press any key to continue <span class="bsod-blink">_</span></p>' +
       '</div>';
     document.body.appendChild(el);
-    function dismiss() {
-      document.removeEventListener('keydown', dismiss, true);
-      document.removeEventListener('pointerdown', dismiss, true);
-      if (el.parentNode) el.parentNode.removeChild(el);
+    // Any key/click (or an 8s stare) reboots the machine: clear the boot flag
+    // and reload so boot.js replays the full BIOS/startup sequence.
+    var rebootTimer = null;
+    function reboot() {
+      document.removeEventListener('keydown', reboot, true);
+      document.removeEventListener('pointerdown', reboot, true);
+      if (rebootTimer) { clearTimeout(rebootTimer); rebootTimer = null; }
+      safeRemove('sessionStorage', 'booted');
+      location.reload();
     }
-    // Defer binding so the triggering keystroke (e.g. Enter typing CRASH in the
-    // DOS prompt) doesn't dismiss it on the same event.
+    // Defer binding so the triggering keystroke (e.g. Enter typing VAULT in the
+    // DOS prompt) doesn't reboot on the same event.
     setTimeout(function () {
-      document.addEventListener('keydown', dismiss, true);
-      document.addEventListener('pointerdown', dismiss, true);
+      document.addEventListener('keydown', reboot, true);
+      document.addEventListener('pointerdown', reboot, true);
+      rebootTimer = setTimeout(reboot, 8000);
     }, 60);
   }
 
