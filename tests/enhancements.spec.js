@@ -68,13 +68,19 @@ test.describe('MS-DOS Prompt', () => {
 
 test.describe('BSOD easter egg', () => {
   test('shows the extra line and reboots into the boot sequence on any key', async ({ page }) => {
-    await bootedDesktop(page);
+    await mockGoatCounter(page);
+    // A window is open in the real path (you run VAULT from the DOS prompt), so
+    // a #window-<id> hash is present. boot.js skips boot when a hash is set, so
+    // the reboot must strip it or the reload drops straight back to the desktop.
+    await page.goto('/#window-dos');
+    await expect(page.locator('#window-dos')).toBeVisible();
+
     await page.evaluate(() => window.__showBsod());
     await expect(page.locator('#bsod-overlay')).toBeVisible();
     await expect(page.locator('#bsod-overlay')).toContainText('fatal exception');
     await expect(page.locator('#bsod-overlay')).toContainText('coming for you');
     // Listeners bind after a short defer; wait past it, then a key reboots the
-    // machine (booted flag cleared + reload -> boot.js replays the BIOS boot).
+    // machine (booted cleared + hash stripped + reload -> boot.js replays boot).
     await page.waitForTimeout(120);
     await page.keyboard.press('Escape');
     await expect(page.locator('#boot-overlay')).toBeVisible({ timeout: 6000 });
