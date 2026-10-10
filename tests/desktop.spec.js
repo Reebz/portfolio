@@ -338,7 +338,7 @@ test.describe('Storage-disabled resilience (private mode / blocked storage)', ()
     // Init still hydrates the icon grid and taskbar despite every storage
     // access throwing into the safe* catch paths.
     await page.waitForFunction(
-      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 14
+      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 13
     );
     await expect(page.locator('#taskbar')).toBeVisible();
     await expect(page.locator('#start-button')).toBeVisible();

@@ -23,8 +23,8 @@
       id: 'always-draft',
       title: 'Always dRaft',
       description: 'Blog',
-      url: null,
-      type: 'construction',
+      url: 'https://alwaysdraft.com/',
+      type: 'link',
       icon: 'img/icons/blog.png'
     },
     {
@@ -68,14 +68,6 @@
       icon: 'img/icons/microgram.png'
     },
     {
-      id: 'prototypist',
-      title: 'Prototypist',
-      description: 'Coming soon',
-      url: null,
-      type: 'construction',
-      icon: 'img/icons/prototypist.png'
-    },
-    {
       id: 'cavaro',
       title: 'Cavaro',
       description: 'Stealth mode',
@@ -86,9 +78,9 @@
     {
       id: 'snowball-dodge',
       title: 'Snowball Dodge',
-      description: 'Coming soon',
-      url: null,
-      type: 'construction',
+      description: 'Game',
+      url: 'http://snowballdodge.com/',
+      type: 'link',
       icon: 'img/icons/snowball.png'
     }
   ];
