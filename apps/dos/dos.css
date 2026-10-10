@@ -1,5 +1,8 @@
-/* MS-DOS Prompt — green-on-black console styling. */
+/* MS-DOS Prompt: a VGA text console. The bitmap font is drawn at its
+   native 9x16 cell (16px type on 16px rows), flush to the window frame,
+   with DOS's blinking underscore in place of the browser caret. */
 #window-dos .window-body {
+  margin: 0;
   background: #000;
 }
 
@@ -7,9 +10,10 @@
   background: #000;
   color: #c0c0c0;
   font-family: "Perfect DOS VGA 437", "Lucida Console", "Courier New", monospace;
-  font-size: 15px;
-  line-height: 1.25;
-  padding: 6px 8px;
+  font-size: 16px;
+  line-height: 16px;
+  -webkit-font-smoothing: none;
+  padding: 0 2px;
   height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
@@ -17,11 +21,13 @@
 }
 
 .dos-line {
+  min-height: 16px;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .dos-prompt-line {
+  position: relative;
   display: flex;
   align-items: baseline;
 }
@@ -33,6 +39,8 @@
 
 #dos-input {
   flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
   background: transparent;
   border: none;
   outline: none;
@@ -41,10 +49,25 @@
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
-  padding: 0 0 0 6px;
+  padding: 0;
   margin: 0;
-  caret-color: #c0c0c0;
+  caret-color: transparent;
 }
+
+/* The underscore cursor: two scanlines at the bottom of the character
+   cell. dos.js keeps it at the insertion point. */
+.dos-caret {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1ch;
+  height: 16px;
+  pointer-events: none;
+  background: linear-gradient(transparent 13px, #c0c0c0 13px, #c0c0c0 15px, transparent 15px);
+  animation: dos-cursor-blink 1s steps(1) infinite;
+}
+
+#dos-input:not(:focus) + .dos-caret { visibility: hidden; }
 
 /* Fallback blinking block cursor rendered next to the input. */
 .dos-cursor {

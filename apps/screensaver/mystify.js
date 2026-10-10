@@ -9,7 +9,8 @@
 
   var VERTS = 4;      // vertices per polygon
   var SHAPES = 2;     // number of independent polygons
-  var TRAIL = 12;     // how many past frames to echo
+  var TRAIL = 7;      // copies of each polygon on screen
+  var GAP = 4;        // frames between copies
 
   function makeShape(w, h, hue) {
     var pts = [];
@@ -42,10 +43,13 @@
     for (var s = 0; s < SHAPES; s++) shapes.push(makeShape(w, h, s * 3.1));
     var frame = 0;
 
+    // Win98 drew Mystify as hard 1px lines: a fixed set of evenly spaced
+    // copies of each polygon in solid colours, no fading or glow. Each copy
+    // keeps the colour it was drawn in, so a slow colour drift shows as a
+    // gradient along the echoes.
     function step() {
       w = canvas.width; h = canvas.height;
-      // Fade the whole frame slightly for a soft trail rather than a hard clear.
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, w, h);
 
       frame++;
@@ -58,21 +62,26 @@
           if (p.y >= h) { p.y = h; p.vy = -Math.abs(p.vy); }
         });
 
-        // Record a snapshot for the trail.
-        shape.trail.push(shape.pts.map(function (p) { return { x: p.x, y: p.y }; }));
-        if (shape.trail.length > TRAIL) shape.trail.shift();
+        // Record a copy every few frames.
+        if (frame % GAP === 0 || !shape.trail.length) {
+          var hue = Math.round(frame * 0.4 + shape.hue * 40) % 360;
+          shape.trail.push({
+            color: 'hsl(' + hue + ',100%,50%)',
+            pts: shape.pts.map(function (p) { return { x: p.x, y: p.y }; })
+          });
+          if (shape.trail.length > TRAIL) shape.trail.shift();
+        }
 
+        ctx.lineWidth = 1;
         for (var t = 0; t < shape.trail.length; t++) {
           var snap = shape.trail[t];
-          var alpha = (t + 1) / shape.trail.length;
-          var hue = (frame * 0.6 + shape.hue * 40) % 360;
-          ctx.strokeStyle = 'hsla(' + hue + ',90%,60%,' + (alpha * 0.9) + ')';
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = snap.color;
           ctx.beginPath();
-          for (var i = 0; i < snap.length; i++) {
-            var q = snap[i];
-            if (i === 0) ctx.moveTo(q.x, q.y);
-            else ctx.lineTo(q.x, q.y);
+          for (var i = 0; i < snap.pts.length; i++) {
+            // Pixel centres keep the 1px lines sharp.
+            var qx = Math.round(snap.pts[i].x) + 0.5, qy = Math.round(snap.pts[i].y) + 0.5;
+            if (i === 0) ctx.moveTo(qx, qy);
+            else ctx.lineTo(qx, qy);
           }
           ctx.closePath();
           ctx.stroke();
