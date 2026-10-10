@@ -18,12 +18,12 @@ test.describe('Mobile icon grid', () => {
     await page.evaluate(() => sessionStorage.setItem('booted', '1'));
     await page.goto('/');
     // Wait for desktop.js to finish generating the icon set. The grid div is
-    // static in HTML but its 14 children (5 system + 9 PROJECTS, see
+    // static in HTML but its 13 children (5 system + 8 PROJECTS, see
     // desktop.js:1665-1827) are JS-injected; without this gate, computed
     // styles can be read before the @media block has applied on WebKit
     // emulation (race surfaced during U3-B4 debugging).
     await page.waitForFunction(
-      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 14
+      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 13
     );
     await page.waitForTimeout(150);
   });

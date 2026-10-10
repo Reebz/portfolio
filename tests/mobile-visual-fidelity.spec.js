@@ -53,7 +53,7 @@ test.describe('Mobile visual fidelity — chrome elements', () => {
     await page.evaluate(() => sessionStorage.setItem('booted', '1'));
     await page.goto('/');
     await page.waitForFunction(
-      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 14
+      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 13
     );
     await page.waitForTimeout(150);
   });

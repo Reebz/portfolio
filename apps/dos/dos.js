@@ -56,6 +56,7 @@
     '  VAULT            Passwords and API tokens';
 
   var BANNER =
+    '\r\n' +
     'Microsoft(R) Windows 98\r\n' +
     '   (C)Copyright Microsoft Corp 1981-1999.\r\n' +
     '\r\n' +
@@ -129,8 +130,8 @@
 
     function run(raw) {
       var cmd = raw.trim();
-      // Echo the command with the prompt, like a real terminal.
-      print(prompt() + ' ' + cmd);
+      // Echo the command right after the prompt, as DOS does.
+      print(prompt() + cmd);
       if (!cmd) return;
       history.push(cmd);
       historyIdx = history.length;
@@ -202,6 +203,26 @@
         }
       }
     });
+
+    // DOS's underscore cursor, kept at the insertion point (the input's own
+    // caret is hidden). The font is monospaced, so the column is enough.
+    var caret = document.createElement('span');
+    caret.className = 'dos-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    input.insertAdjacentElement('afterend', caret);
+    function placeCaret() {
+      var col = input.selectionEnd == null ? input.value.length : input.selectionEnd;
+      caret.style.left = 'calc(' + input.offsetLeft + 'px + ' + col + 'ch - ' + input.scrollLeft + 'px)';
+      // Restart the blink so the cursor shows while typing.
+      caret.style.animation = 'none';
+      void caret.offsetWidth;
+      caret.style.animation = '';
+    }
+    ['input', 'keyup', 'click', 'focus', 'select'].forEach(function (type) {
+      input.addEventListener(type, placeCaret);
+    });
+    input.addEventListener('keydown', function () { setTimeout(placeCaret, 0); });
+    placeCaret();
 
     // Clicking anywhere on the screen focuses the input, like a real console.
     var screen = output.parentElement;

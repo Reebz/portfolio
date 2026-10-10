@@ -637,7 +637,7 @@ test.describe('U3 — Focus-state: inactive title bars everywhere', () => {
   });
 });
 
-test.describe('U6 — Minimize/restore taskbar zoom-rectangle animation', () => {
+test.describe('U6 — Minimize/restore caption animation', () => {
   test.beforeEach(BOOTED);
 
   async function openGuestbook(page) {
@@ -663,20 +663,21 @@ test.describe('U6 — Minimize/restore taskbar zoom-rectangle animation', () => 
     expect(display).toBe('none');
   });
 
-  // R3: without reduced motion, minimize animates — a transform (translate +
-  // scale toward the taskbar) is applied to the window element mid-flight,
-  // before it is hidden. This is the new behavior; it is red pre-change.
-  test('minimize applies a transform toward the taskbar when motion is allowed', async ({ page }) => {
+  // R3: without reduced motion, minimize animates the Win98 way — the window
+  // hides at once and a copy of its caption bar flies to the taskbar chip,
+  // then removes itself.
+  test('minimize flies a caption bar to the taskbar when motion is allowed', async ({ page }) => {
     await openGuestbook(page);
     await page.click(MIN_BTN);
-    const sawTransform = await page
+    const sawCaption = await page
       .waitForFunction(() => {
-        const el = document.getElementById('window-guestbook');
-        return !!el.style.transform && el.style.transform.indexOf('scale') !== -1;
+        const cap = document.querySelector('.caption-flight');
+        return !!cap && cap.textContent.indexOf('Guestbook') !== -1;
       }, null, { timeout: 1000, polling: 10 })
       .then(() => true)
       .catch(() => false);
-    expect(sawTransform).toBe(true);
+    expect(sawCaption).toBe(true);
+    await expect(page.locator('.caption-flight')).toHaveCount(0, { timeout: 1000 });
   });
 
   // AE3: prefers-reduced-motion disables the animation — the window disappears
@@ -692,51 +693,63 @@ test.describe('U6 — Minimize/restore taskbar zoom-rectangle animation', () => 
     });
     expect(snap.transform).toBe('');
     expect(snap.display).toBe('none');
+    await expect(page.locator('.caption-flight')).toHaveCount(0);
   });
 
   // Guards the double-fire path: minimize → restore → minimize in rapid
-  // succession (each click landing mid-animation) must not strand the window
-  // in a transformed state once the dust settles.
-  test('rapid minimize/restore/minimize leaves no residual transform', async ({ page }) => {
+  // succession (each click landing mid-flight) must not strand the window
+  // transparent or leave a caption bar behind once the dust settles.
+  test('rapid minimize/restore/minimize leaves no residual animation state', async ({ page }) => {
     await openGuestbook(page);
-    // 50ms gaps land each interaction inside the previous ~180ms animation,
+    // 50ms gaps land each interaction inside the previous ~200ms flight,
     // forcing the in-flight animation to complete before the next begins.
-    await page.click(MIN_BTN);            // minimize (anim out)
+    await page.click(MIN_BTN);            // minimize (caption out)
     await page.waitForTimeout(50);
-    await page.click(CHIP);               // active+open → re-minimize completes it
+    await page.click(CHIP);               // minimized → restore (caption in)
     await page.waitForTimeout(50);
-    await page.click(CHIP);               // minimized → restore (anim in)
-    await page.waitForTimeout(50);
-    await page.click(CHIP);               // active+open → minimize (anim out)
-    await page.waitForTimeout(500);       // let the final animation settle
+    await page.click(CHIP);               // active+open → minimize (caption out)
+    await page.waitForTimeout(500);       // let the final flight settle
     const res = await page.evaluate(() => {
       const el = document.getElementById('window-guestbook');
-      return { transform: el.style.transform, state: el.getAttribute('data-state') };
+      return {
+        transform: el.style.transform,
+        opacity: el.style.opacity,
+        state: el.getAttribute('data-state'),
+        captions: document.querySelectorAll('.caption-flight').length,
+      };
     });
     expect(res.transform).toBe('');
+    expect(res.opacity).toBe('');
     expect(res.state).toBe('minimized');
+    expect(res.captions).toBe(0);
   });
 
-  // Closing a window while its minimize animation is still in flight must not
-  // let the pending finalize (fallback timer) resurrect it into a phantom
-  // 'minimized' state after it is already closed. closeWindow snaps the
-  // animation to its end first; without that guard the window ends 'minimized'
-  // ~250ms after close, with no taskbar chip. Escape closes the active window.
-  test('closing mid-minimize-animation does not resurrect a phantom minimized window', async ({ page }) => {
+  // Closing a window while its restore flight is still in progress must not
+  // let the pending finish (fallback timer) touch it after it is closed, or
+  // leave the caption bar behind. closeWindow snaps the flight to its end
+  // first. Escape closes the active window, which restore just activated.
+  test('closing mid-restore-animation leaves no phantom window or caption', async ({ page }) => {
     await openGuestbook(page);
-    await page.click(MIN_BTN);        // minimize animation + finalize timer pending
-    await page.waitForTimeout(40);    // land inside the animation window
+    await page.click(MIN_BTN);
+    await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'minimized');
+    await page.waitForTimeout(400);   // first flight done
+    await page.click(CHIP);           // restore: caption flies up, window transparent
+    await page.waitForTimeout(40);    // land inside the flight
     await page.keyboard.press('Escape'); // closeWindow(activeWindowId) mid-flight
-    await page.waitForTimeout(400);   // past WINDOW_ANIM_FALLBACK_MS (250ms)
+    await page.waitForTimeout(400);   // past the flight's fallback timer
     const res = await page.evaluate(() => {
       const el = document.getElementById('window-guestbook');
       return {
         state: el.getAttribute('data-state'),
+        opacity: el.style.opacity,
         chip: !!document.querySelector('#taskbar-buttons [data-window-id="window-guestbook"]'),
+        captions: document.querySelectorAll('.caption-flight').length,
       };
     });
-    expect(res.state).toBe('closed'); // not flipped back to 'minimized'
+    expect(res.state).toBe('closed');
+    expect(res.opacity).toBe('');
     expect(res.chip).toBe(false);     // no phantom taskbar chip
+    expect(res.captions).toBe(0);
   });
 });
 
@@ -768,7 +781,8 @@ test.describe('Maximize restore-size survives a desktop resize round-trip', () =
     await page.setViewportSize({ width: vp.width, height: vp.height }); // back to original
     await page.waitForTimeout(60);
 
-    await page.click(MAX_BTN); // restore
+    // While maximized the button wears Win98's Restore glyph.
+    await page.click('#window-guestbook .title-bar [aria-label="Restore"]'); // restore
     await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
     const width = await page.evaluate(() =>
       parseInt(document.getElementById('window-guestbook').style.width, 10)

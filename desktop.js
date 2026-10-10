@@ -8,7 +8,7 @@
   // --- Constants ---
   var TASKBAR_HEIGHT = 28;
   var MIN_WIN_SIZE = { w: 300, h: 200 };
-  var DBLCLICK_DELAY = 300;
+  var DBLCLICK_DELAY = 500; // Windows' default double-click time
   // Drag clamps: minimum on-screen sliver kept visible during window drag so the
   // user can always grab the title bar back from the viewport edges.
   var DRAG_EDGE_MARGIN_X = 100; // px kept visible on the right edge
@@ -23,8 +23,8 @@
       id: 'always-draft',
       title: 'Always dRaft',
       description: 'Blog',
-      url: null,
-      type: 'construction',
+      url: 'https://alwaysdraft.com/',
+      type: 'link',
       icon: 'img/icons/blog.png'
     },
     {
@@ -68,14 +68,6 @@
       icon: 'img/icons/microgram.png'
     },
     {
-      id: 'prototypist',
-      title: 'Prototypist',
-      description: 'Coming soon',
-      url: null,
-      type: 'construction',
-      icon: 'img/icons/prototypist.png'
-    },
-    {
       id: 'cavaro',
       title: 'Cavaro',
       description: 'Stealth mode',
@@ -86,12 +78,15 @@
     {
       id: 'snowball-dodge',
       title: 'Snowball Dodge',
-      description: 'Coming soon',
-      url: null,
-      type: 'construction',
+      description: 'Game',
+      url: 'http://snowballdodge.com/',
+      type: 'link',
       icon: 'img/icons/snowball.png'
     }
   ];
+
+  // 16px MS-DOS Prompt caption icon (black console, Windows flag, prompt).
+  var DOS_ICON = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20shape-rendering='crispEdges'%3E%3Crect%20x='1'%20y='2'%20width='14'%20height='12'%20fill='%23c0c0c0'/%3E%3Crect%20x='2'%20y='3'%20width='12'%20height='10'%20fill='%23000'/%3E%3Crect%20x='3'%20y='4'%20width='2'%20height='2'%20fill='%23ff5555'/%3E%3Crect%20x='5'%20y='4'%20width='2'%20height='2'%20fill='%233cd23c'/%3E%3Crect%20x='3'%20y='6'%20width='2'%20height='2'%20fill='%234b8cff'/%3E%3Crect%20x='5'%20y='6'%20width='2'%20height='2'%20fill='%23ffd23b'/%3E%3Crect%20x='8'%20y='5'%20width='5'%20height='1'%20fill='%23c0c0c0'/%3E%3Crect%20x='8'%20y='7'%20width='4'%20height='1'%20fill='%23808080'/%3E%3Crect%20x='3'%20y='10'%20width='9'%20height='1'%20fill='%23c0c0c0'/%3E%3C/svg%3E";
 
   // Non-project windows (hand-authored in HTML)
   var SYSTEM_WINDOWS = ['about', 'guestbook', 'contact', 'my-computer', 'recycle-bin', 'visitor-counter', 'clock', 'shutdown', 'logoff'];
@@ -212,6 +207,16 @@
   function registerWindow(id, el, opts) {
     opts = opts || {};
     VALID_WINDOWS.add(id);
+    // Size grip for resizable windows; CSS shows it only on tablets, where
+    // the thin frame is too fine a target for a finger.
+    if (el.getAttribute('data-no-resize') !== 'true' &&
+        el.querySelector('.title-bar-controls [aria-label="Maximize"]') &&
+        !el.querySelector(':scope > .size-grip')) {
+      var grip = document.createElement('div');
+      grip.className = 'size-grip';
+      grip.setAttribute('aria-hidden', 'true');
+      el.appendChild(grip);
+    }
     windows.set(id, {
       state: 'closed',
       prevRect: null,
@@ -302,7 +307,7 @@
 
     if (win.state === 'open' || win.state === 'maximized') {
       bringToFront(id);
-      win.el.focus();
+      win.el.focus({ preventScroll: true });
       var existingHook = windowOpenHooks[id];
       if (existingHook) existingHook();
       return;
@@ -342,7 +347,7 @@
     }
 
     bringToFront(id);
-    win.el.focus();
+    win.el.focus({ preventScroll: true });
 
     // U4: Mobile viewport clamp. After CSS max-width caps the rendered
     // width, push any window that would extend past the right/bottom
@@ -350,10 +355,12 @@
     // wider system windows (Recycle Bin width:500 → max-width clamps to
     // ~95vw, but offset 30-218 places them off-right at 390×844). Read
     // computed rect after the open class flips so the measurement is
-    // accurate. Keeps MIN_WIN_SIZE on desktop unchanged. A maximized
-    // window is pinned flush by CSS (left/top 0 !important), so skip it.
-    if (isMobile() && win.state !== 'maximized') {
-      clampWindowToViewport(win.el);
+    // accurate. A maximized window is pinned flush by CSS (left/top 0
+    // !important), so skip it. Desktop and tablets get the gentler
+    // keepWindowReachable instead.
+    if (win.state !== 'maximized') {
+      if (isMobile()) clampWindowToViewport(win.el);
+      else keepWindowReachable(win.el);
     }
 
     // Create taskbar button
@@ -410,6 +417,7 @@
 
     win.state = 'closed';
     win.el.setAttribute('data-state', 'closed');
+    syncMaximizeButton(win);
     win.el.style.transform = '';
     // Reset all positioning so the next open path (cascade or tray-anchored) starts clean.
     win.el.style.position = '';
@@ -491,10 +499,21 @@
       announce(getTitleText(win.el) + ' minimized');
     };
 
-    // Skip the animation (minimize instantly) when motion is reduced, there is
-    // no taskbar button to fly toward, or the window is maximized — a maximized
-    // window carries transform:none !important, which would swallow the inline
-    // transform anyway, so it disappears instantly by design.
+    // Desktop and tablets: Win98 hides the window at once and flies its
+    // caption bar down to the taskbar button.
+    if (!isMobile()) {
+      var fromBar = win.el.querySelector('.title-bar');
+      var fromRect = fromBar && win.taskbarBtn && !Anim.prefersReducedMotion()
+        ? fromBar.getBoundingClientRect() : null;
+      finalize();
+      if (fromRect) Anim.flyCaption(win, fromRect, win.taskbarBtn.getBoundingClientRect(), getZoom(), null);
+      return;
+    }
+
+    // Phones: skip the animation (minimize instantly) when motion is reduced,
+    // there is no taskbar button to fly toward, or the window is maximized — a
+    // maximized window carries transform:none !important, which would swallow
+    // the inline transform anyway, so it disappears instantly by design.
     if (win.state === 'maximized' || !win.taskbarBtn || Anim.prefersReducedMotion()) {
       finalize();
       return;
@@ -527,22 +546,36 @@
           win.el.style.left = win.prevRect.x + 'px';
           win.el.style.top = win.prevRect.y + 'px';
           win.el.style.width = win.prevRect.w + 'px';
-          win.el.style.height = win.prevRect.h + 'px';
+          win.el.style.height = restoredHeight(win.prevRect);
         }
       }
 
       clampWindowToViewport(win.el);
+      syncMaximizeButton(win);
 
       bringToFront(id);
-      win.el.focus();
+      win.el.focus({ preventScroll: true });
 
       var resHook = windowRestoreHooks[id];
       if (resHook) resHook();
 
       announce(getTitleText(win.el) + ' restored');
 
-      // Reverse of minimize: grow the window out from the taskbar button.
-      // Same skip conditions — reduced motion, no button, or maximized (its
+      // Desktop and tablets: the caption flies up from the taskbar button and
+      // the window appears when it lands. Transparent rather than hidden
+      // meanwhile, so it keeps the focus it was just given.
+      if (!isMobile()) {
+        var toBar = win.el.querySelector('.title-bar');
+        if (toBar && win.taskbarBtn && !Anim.prefersReducedMotion()) {
+          win.el.style.opacity = '0';
+          Anim.flyCaption(win, win.taskbarBtn.getBoundingClientRect(), toBar.getBoundingClientRect(), getZoom(),
+            function() { win.el.style.opacity = ''; });
+        }
+        return;
+      }
+
+      // Phones: grow the window out from the taskbar button. Same skip
+      // conditions — reduced motion, no button, or maximized (its
       // transform:none !important would suppress the inline transform).
       if (win.state !== 'maximized' && win.taskbarBtn && !Anim.prefersReducedMotion()) {
         var v = Anim.taskbarVector(win.el, win.taskbarBtn, getZoom());
@@ -561,6 +594,14 @@
     // overwritten by the pending finalize (same guard as minimize/restore).
     if (win.animFinish) win.animFinish();
 
+    // Where the caption starts, for the desktop flight below.
+    var capBar = win.el.querySelector('.title-bar');
+    var capFrom = capBar && !isMobile() && !Anim.prefersReducedMotion() &&
+      (win.state === 'open' || win.state === 'maximized') ? capBar.getBoundingClientRect() : null;
+
+    // Fixed-size windows never maximize (their Maximize is greyed out).
+    if (win.state === 'open' && win.el.getAttribute('data-no-resize') === 'true') return;
+
     if (win.state === 'maximized') {
       // Restore
       win.state = 'open';
@@ -569,7 +610,7 @@
         win.el.style.left = win.prevRect.x + 'px';
         win.el.style.top = win.prevRect.y + 'px';
         win.el.style.width = win.prevRect.w + 'px';
-        win.el.style.height = win.prevRect.h + 'px';
+        win.el.style.height = restoredHeight(win.prevRect);
       }
       clampWindowToViewport(win.el);
       announce(getTitleText(win.el) + ' restored');
@@ -581,7 +622,25 @@
       announce(getTitleText(win.el) + ' maximized');
     }
 
+    syncMaximizeButton(win);
     bringToFront(id);
+
+    // Desktop and tablets: the caption flies from the old title bar to the
+    // new one, then the window shows at its new size.
+    if (capFrom) {
+      win.el.style.opacity = '0';
+      Anim.flyCaption(win, capFrom, capBar.getBoundingClientRect(), getZoom(),
+        function() { win.el.style.opacity = ''; });
+    }
+  }
+
+  // Win98 swaps the Maximize glyph for Restore while a window is maximized;
+  // 98.css draws both from the aria-label. Phones keep the one label their
+  // CSS and tap targets key off.
+  function syncMaximizeButton(win) {
+    if (!win || !win.el || isMobile()) return;
+    var btn = win.el.querySelector('.title-bar-controls [aria-label="Maximize"], .title-bar-controls [aria-label="Restore"]');
+    if (btn) btn.setAttribute('aria-label', win.state === 'maximized' ? 'Restore' : 'Maximize');
   }
 
   function focusNextWindow() {
@@ -609,7 +668,21 @@
     btn.className = 'taskbar-window-btn';
     btn.setAttribute('data-window-id', id);
     btn.setAttribute('aria-pressed', 'true');
-    btn.textContent = getTitleText(win.el);
+    // Win98 task buttons lead with the window's 16px caption icon. Phones
+    // hide it in CSS; the label span lets WebKit ellipsise long titles.
+    var captionIcon = win.el.querySelector('.title-bar-icon');
+    if (captionIcon) {
+      var icon = document.createElement('img');
+      icon.className = 'taskbar-window-icon';
+      icon.src = captionIcon.getAttribute('src');
+      icon.alt = '';
+      icon.setAttribute('aria-hidden', 'true');
+      btn.appendChild(icon);
+    }
+    var label = document.createElement('span');
+    label.className = 'taskbar-window-label';
+    label.textContent = getTitleText(win.el);
+    btn.appendChild(label);
     elTaskbarButtons.appendChild(btn);
     win.taskbarBtn = btn;
   }
@@ -642,7 +715,6 @@
 
   function getResizeEdge(e, winEl) {
     var rect = winEl.getBoundingClientRect();
-    var z = getZoom();
     var x = e.clientX;
     var y = e.clientY;
     var nearL = x - rect.left < RESIZE_ZONE;
@@ -661,9 +733,11 @@
     return null;
   }
 
+  // Double-headed sizing arrows, as Win98 drew them (single-direction
+  // n-resize etc. render one-headed on macOS).
   var EDGE_CURSORS = {
-    n: 'n-resize', ne: 'ne-resize', e: 'e-resize', se: 'se-resize',
-    s: 's-resize', sw: 'sw-resize', w: 'w-resize', nw: 'nw-resize'
+    n: 'ns-resize', ne: 'nesw-resize', e: 'ew-resize', se: 'nwse-resize',
+    s: 'ns-resize', sw: 'nesw-resize', w: 'ew-resize', nw: 'nwse-resize'
   };
 
   function onResizeStart(e, windowId, edge) {
@@ -672,6 +746,12 @@
     if (win.el.getAttribute('data-no-resize') === 'true') return;
 
     var z = getZoom();
+    // Trade an open-time height cap for the equivalent fixed height, so the
+    // drag starts from what is on screen and can grow past the cap.
+    if (win.el.style.maxHeight) {
+      win.el.style.height = (win.el.getBoundingClientRect().height / z) + 'px';
+      win.el.style.maxHeight = '';
+    }
     resizeState.active = true;
     resizeState.windowId = windowId;
     resizeState.edge = edge;
@@ -783,11 +863,14 @@
     if (!win || win.state === 'maximized') return;
 
     var rect = win.el.getBoundingClientRect();
+    var bar = win.el.querySelector('.title-bar');
     dragState.windowId = windowId;
     dragState.offsetX = e.clientX - rect.left;
     dragState.offsetY = e.clientY - rect.top;
     dragState.startX = e.clientX;
     dragState.startY = e.clientY;
+    dragState.width = rect.width;
+    dragState.barHeight = bar ? bar.getBoundingClientRect().bottom - rect.top : 30;
     dragState.active = false;
 
     e.target.setPointerCapture(e.pointerId);
@@ -813,9 +896,19 @@
     var x = e.clientX - dragState.offsetX;
     var y = e.clientY - dragState.offsetY;
 
-    // Constrain to viewport
-    x = Math.max(0, Math.min(x, window.innerWidth - DRAG_EDGE_MARGIN_X));
-    y = Math.max(0, Math.min(y, window.innerHeight - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
+    // Constrain to viewport. Phones keep the window fully inside. Elsewhere,
+    // as in Win98, a window may hang off the left, right or bottom edge as
+    // long as a grabbable stretch of its title bar stays on screen above
+    // the taskbar. Everything here is in device px, so the margin and the
+    // taskbar are measured post-zoom.
+    if (isMobile()) {
+      x = Math.max(0, Math.min(x, window.innerWidth - DRAG_EDGE_MARGIN_X));
+      y = Math.max(0, Math.min(y, window.innerHeight - TASKBAR_HEIGHT - DRAG_EDGE_MARGIN_Y));
+    } else {
+      var keep = DRAG_EDGE_MARGIN_X * getZoom();
+      x = Math.max(keep - dragState.width, Math.min(x, window.innerWidth - keep));
+      y = Math.max(0, Math.min(y, window.innerHeight - getTaskbarHeight() - dragState.barHeight));
+    }
 
     dragState.pendingX = x;
     dragState.pendingY = y;
@@ -962,18 +1055,42 @@
     }
   }
 
+  // Win98 drops the Start menu on the press, not the release. The press
+  // toggles it here and the click that follows is ignored; keyboard
+  // activation (Enter/Space) still arrives as a lone click.
+  var startPressToggled = false;
+
+  function toggleStartMenu(fromPointer) {
+    var startBtn = document.getElementById('start-button');
+    var menu = document.getElementById('start-menu');
+    menu.classList.toggle('open');
+    var isOpen = menu.classList.contains('open');
+    startBtn.setAttribute('aria-expanded', isOpen);
+    if (!isOpen) {
+      closeAllSubmenus();
+      return;
+    }
+    // Opened by keyboard: first item selected. Opened by pointer: nothing
+    // selected, but the menu holds focus so the arrow keys still work.
+    if (fromPointer) {
+      if (!menu.hasAttribute('tabindex')) menu.setAttribute('tabindex', '-1');
+      menu.focus({ preventScroll: true });
+    } else {
+      var firstItem = menu.querySelector('[role="menuitem"]');
+      if (firstItem) firstItem.focus();
+    }
+  }
+
   function handleGlobalClick(e) {
     var startBtn = document.getElementById('start-button');
     var menu = document.getElementById('start-menu');
 
     if (startBtn && startBtn.contains(e.target)) {
-      menu.classList.toggle('open');
-      var isOpen = menu.classList.contains('open');
-      startBtn.setAttribute('aria-expanded', isOpen);
-      if (isOpen) {
-        var firstItem = menu.querySelector('[role="menuitem"]');
-        if (firstItem) firstItem.focus();
+      if (startPressToggled) {
+        startPressToggled = false;
+        return;
       }
+      toggleStartMenu(e.detail > 0);
       return;
     }
 
@@ -1150,7 +1267,7 @@
       ctx.fill();
 
       // Update digital readout
-      if (digitalEl) digitalEl.textContent = formatTime12h(syd) + ':' + (secs < 10 ? '0' : '') + secs;
+      if (digitalEl) digitalEl.textContent = formatTime12h(syd).replace(' ', ':' + (secs < 10 ? '0' : '') + secs + ' ');
       if (dateEl) dateEl.textContent = formatSydneyFullDate(syd);
       if (tzOffsetEl) {
         var isDST = syd.toLocaleString('en-US', { timeZone: TIMEZONE, timeZoneName: 'short' }).includes('DT');
@@ -1243,9 +1360,24 @@
   }
 
   // --- System Tray Click Handlers ---
+  // Pop a tray dialog up just above the taskbar, rightGap CSS px in from the
+  // right edge. Numeric left/top (not right/bottom with auto) so dragging,
+  // resizing and the viewport clamp treat it like any other window; the
+  // auto/fixed version stretched on drag and jumped on resize, and mixed a
+  // zoomed taskbar height into CSS px so it floated 27px high.
+  function placeNearTray(winEl, rightGap) {
+    var z = getZoom();
+    var r = winEl.getBoundingClientRect();
+    winEl.style.position = '';
+    winEl.style.right = '';
+    winEl.style.bottom = '';
+    winEl.style.left = Math.max(4, window.innerWidth / z - r.width / z - rightGap) + 'px';
+    winEl.style.top = Math.max(4, window.innerHeight / z - getTaskbarHeightCss(z) - r.height / z - 4) + 'px';
+  }
+
   function setupSystemTrayClicks() {
     if (elVisitorCounter) {
-      elVisitorCounter.style.cursor = 'default';
+      elVisitorCounter.style.cursor = '';
       elVisitorCounter.addEventListener('click', function(e) {
         // Tray clicks stop propagation so the desktop click delegator
         // doesn't interpret them as a desktop tap — but that also blocked
@@ -1260,7 +1392,9 @@
         } else {
           // Position near the system tray
           openWindow('window-visitor-counter');
-          if (win && win.el) {
+          if (win && win.el && !isMobile()) {
+            placeNearTray(win.el, 80);
+          } else if (win && win.el) {
             win.el.style.left = 'auto';
             win.el.style.right = '80px';
             win.el.style.top = 'auto';
@@ -1272,7 +1406,7 @@
     }
 
     if (elClock) {
-      elClock.style.cursor = 'default';
+      elClock.style.cursor = '';
       elClock.addEventListener('click', function(e) {
         // See visitor-counter comment above — close Start menu before
         // stopPropagation so the global click delegator doesn't fire.
@@ -1285,7 +1419,9 @@
           // openWindow fires the windowOpenHooks['window-clock'] entry which
           // starts the analogue clock, so no explicit call needed here.
           openWindow('window-clock');
-          if (win && win.el) {
+          if (win && win.el && !isMobile()) {
+            placeNearTray(win.el, 4);
+          } else if (win && win.el) {
             win.el.style.left = 'auto';
             win.el.style.right = '4px';
             win.el.style.top = 'auto';
@@ -1308,14 +1444,15 @@
   function applySoundState(el, on) {
     el.setAttribute('aria-pressed', on ? 'true' : 'false');
     el.setAttribute('aria-label', on ? 'Sound on' : 'Sound off (muted)');
-    el.setAttribute('title', on ? 'Sound on' : 'Muted');
+    // No native title: the Win98 tooltip (tooltipSourceFor) shows the state.
+    el.removeAttribute('title');
     if (window.Sounds) window.Sounds.setSoundEnabled(on);
   }
 
   function initSoundToggle() {
     var el = document.getElementById('tray-speaker');
     if (!el) return;
-    el.style.cursor = 'default';
+    el.style.cursor = '';
 
     // Restore persisted preference (default ENABLED when unset).
     applySoundState(el, safeRead('localStorage', 'sound-enabled') !== '0');
@@ -1355,6 +1492,15 @@
     }
     var ctrl = el.closest('.title-bar-controls button');
     if (ctrl) return { el: ctrl, text: ctrl.getAttribute('aria-label') || '' };
+    // Win98 names a taskbar button's window in a tooltip, which matters once
+    // the buttons are squeezed and their labels cut short.
+    var task = el.closest('.taskbar-window-btn');
+    if (task) {
+      var taskLabel = task.querySelector('.taskbar-window-label');
+      return { el: task, text: (taskLabel || task).textContent };
+    }
+    var speaker = el.closest('#tray-speaker');
+    if (speaker) return { el: speaker, text: speaker.getAttribute('aria-pressed') === 'true' ? 'Sound on' : 'Muted' };
     return null;
   }
 
@@ -1486,9 +1632,12 @@
       var x = (e.clientX - iconDragState.offsetX) / z;
       var y = (e.clientY - iconDragState.offsetY) / z;
 
-      // Constrain to grid bounds
-      x = Math.max(0, x);
-      y = Math.max(0, y);
+      // Constrain to grid bounds: an icon dropped low used to vanish behind
+      // the taskbar.
+      var maxX = elIconGrid.clientWidth - iconDragState.iconEl.offsetWidth;
+      var maxY = elIconGrid.clientHeight - iconDragState.iconEl.offsetHeight;
+      x = Math.max(0, Math.min(x, maxX));
+      y = Math.max(0, Math.min(y, maxY));
 
       if (!iconDragState.rafId) {
         iconDragState.rafId = requestAnimationFrame(function() {
@@ -1562,10 +1711,12 @@
         openWindow(windowId);
       }
     } else {
-      // First click — wait for potential double-click
+      // First click selects at once (Win98 highlights on the first click,
+      // not after the double-click window lapses), then waits for a
+      // potential second click.
+      selectIcon(iconEl);
       var timeout = setTimeout(function() {
         clickTimeouts.delete(windowId);
-        selectIcon(iconEl);
       }, DBLCLICK_DELAY);
       clickTimeouts.set(windowId, timeout);
     }
@@ -1612,7 +1763,7 @@
         return;
       }
 
-      var maxBtn = e.target.closest('[aria-label="Maximize"]');
+      var maxBtn = e.target.closest('[aria-label="Maximize"], [aria-label="Restore"]');
       if (maxBtn) {
         var winEl3 = maxBtn.closest('.window');
         if (winEl3) toggleMaximize(winEl3.id);
@@ -1628,12 +1779,23 @@
 
     // Title bar drag + window resize (pointer events on desktop)
     elDesktop.addEventListener('pointerdown', function(e) {
-      // Check for resize first (edge/corner of a window)
       var winEl = e.target.closest('.window');
-      if (winEl && windows.has(winEl.id)) {
+      var known = winEl && windows.has(winEl.id);
+
+      // Win98 activates a window on the press, not the release.
+      if (known && activeWindowId !== winEl.id) bringToFront(winEl.id);
+
+      // Check for resize first (edge/corner of a window)
+      if (known) {
         var edge = getResizeEdge(e, winEl);
         if (edge && !e.target.closest('.title-bar') && !e.target.closest('.window-body') && !e.target.closest('.status-bar')) {
           onResizeStart(e, winEl.id, edge);
+          return;
+        }
+        // A fingertip can't find the thin frame, so tablets show the
+        // classic size grip in the bottom-right corner (style.css).
+        if (e.target.closest('.size-grip')) {
+          onResizeStart(e, winEl.id, 'se');
           return;
         }
       }
@@ -1643,9 +1805,36 @@
       if (!titleBar) return;
       if (e.target.closest('button')) return;
 
-      if (winEl && windows.has(winEl.id)) {
+      if (known) {
+        // No text selection or caret from the drag; focus the window by
+        // hand since that default is suppressed too.
+        e.preventDefault();
+        if (!winEl.contains(document.activeElement)) winEl.focus({ preventScroll: true });
         onDragStart(e, winEl.id);
       }
+    });
+
+    // Double-clicking a caption toggles maximize, as in Win98. Dialogs (no
+    // Maximize button) and phones are left alone.
+    elDesktop.addEventListener('dblclick', function(e) {
+      if (isMobile()) return;
+      var titleBar = e.target.closest('.title-bar');
+      if (!titleBar || e.target.closest('button')) return;
+      var winEl = titleBar.closest('.window');
+      if (!winEl || !windows.has(winEl.id)) return;
+      if (!titleBar.querySelector('[aria-label="Maximize"]:not(:disabled), [aria-label="Restore"]')) return;
+      toggleMaximize(winEl.id);
+    });
+
+    // Clicking into an embedded frame (Paint) never reaches this document,
+    // so raise its window when the page hands focus to the frame.
+    window.addEventListener('blur', function() {
+      setTimeout(function() {
+        var frame = document.activeElement;
+        if (!frame || frame.tagName !== 'IFRAME') return;
+        var frameWin = frame.closest('.window');
+        if (frameWin && windows.has(frameWin.id) && activeWindowId !== frameWin.id) bringToFront(frameWin.id);
+      }, 0);
     });
 
     elDesktop.addEventListener('pointermove', function(e) {
@@ -1714,7 +1903,7 @@
           minimizeWindow(id);
         } else {
           bringToFront(id);
-          win.el.focus();
+          win.el.focus({ preventScroll: true });
           // U5: occlusion recovery — if the focused window's title bar
           // isn't sufficiently visible (off-edge after a drag, behind
           // chrome), clamp it back into reach. No-op on desktop and
@@ -1773,17 +1962,53 @@
     // Global click for start menu
     document.addEventListener('click', handleGlobalClick);
 
+    // Start drops on the press (see toggleStartMenu). A press that never
+    // becomes a click (released off the button) clears the latch.
+    elStartButton.addEventListener('pointerdown', function(e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      startPressToggled = true;
+      toggleStartMenu(true);
+    });
+    document.addEventListener('pointerup', function() {
+      setTimeout(function() { startPressToggled = false; }, 0);
+    });
+
+    // One highlight per menu: keyboard focus follows the mouse.
+    elStartMenu.addEventListener('mouseover', function(e) {
+      var hovered = e.target.closest('[role="menuitem"]');
+      if (hovered && hovered !== document.activeElement) hovered.focus({ preventScroll: true });
+    });
+
     // Keyboard
     document.addEventListener('keydown', function(e) {
-      // Escape closes start menu first (including any open submenus), then topmost window.
+      // Escape backs out one Start-menu level per press (innermost cascade
+      // first, as Win98 did), then closes the active window. It never closes
+      // a window from inside a text field (a stray Esc used to throw away a
+      // Notepad draft or a half-written e-mail), and Calculator keeps Esc as
+      // its Clear key.
       if (e.key === 'Escape') {
+        if (document.querySelector('.context-menu.open')) {
+          hideAllContextMenus();
+          return;
+        }
         if (elStartMenu.classList.contains('open')) {
+          var openCascades = elStartMenu.querySelectorAll('.has-submenu.submenu-open');
+          if (openCascades.length) {
+            var innermost = openCascades[openCascades.length - 1];
+            closeSubmenu(innermost);
+            var cascadeTrigger = innermost.querySelector(':scope > [aria-haspopup]');
+            if (cascadeTrigger) cascadeTrigger.focus();
+            return;
+          }
           elStartMenu.classList.remove('open');
           elStartButton.setAttribute('aria-expanded', 'false');
           closeAllSubmenus();
           elStartButton.focus();
           return;
         }
+        if (isTextEntry(e.target)) return;
+        if (activeWindowId === 'window-calculator') return;
         if (activeWindowId) {
           closeWindow(activeWindowId);
           return;
@@ -1825,15 +2050,28 @@
         var next = (idx + dir + openIds.length) % openIds.length;
         bringToFront(openIds[next]);
         var nextWin = windows.get(openIds[next]);
-        if (nextWin && nextWin.el) nextWin.el.focus();
+        if (nextWin && nextWin.el) nextWin.el.focus({ preventScroll: true });
         announce(getTitleText(nextWin.el) + ' activated');
       }
     });
 
-    // Start menu keyboard navigation
+    // Start menu keyboard navigation. Up/Down/Home/End move within the list
+    // that holds the focused row (the top level when the menu itself has
+    // focus), skipping rows that aren't showing; the flat list of every
+    // menuitem used to step into hidden submenu rows and stick.
+    function startMenuRows() {
+      var active = document.activeElement;
+      var list = active && active.closest && active.closest('#start-menu ul');
+      if (!list || !elStartMenu.contains(list)) list = elStartMenu.querySelector('.start-menu-items');
+      return Array.from(list.querySelectorAll(':scope > li > [role="menuitem"]')).filter(function(el) {
+        return el.getClientRects().length > 0;
+      });
+    }
+
     elStartMenu.addEventListener('keydown', function(e) {
-      var items = Array.from(elStartMenu.querySelectorAll('[role="menuitem"]'));
+      var items = startMenuRows();
       var currentIdx = items.indexOf(document.activeElement);
+      if (!items.length) return;
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -1871,6 +2109,32 @@
       } else if (e.key === 'End') {
         e.preventDefault();
         items[items.length - 1].focus();
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Win98 access keys: the underlined letter picks its row (a cascade
+        // opens on its first item). Rows without one answer to their first
+        // letter: a lone match opens, several take turns being selected.
+        var ch = e.key.toLowerCase();
+        var keyed = items.filter(function(el) {
+          var u = el.querySelector('u');
+          return u && u.textContent.toLowerCase() === ch;
+        })[0];
+        var hit = keyed;
+        if (!hit) {
+          var starts = items.filter(function(el) {
+            return !el.querySelector('u') && el.textContent.trim().charAt(0).toLowerCase() === ch;
+          });
+          if (starts.length > 1) {
+            e.preventDefault();
+            starts[(starts.indexOf(document.activeElement) + 1) % starts.length].focus();
+            return;
+          }
+          hit = starts[0];
+        }
+        if (hit) {
+          e.preventDefault();
+          hit.focus();
+          hit.click();
+        }
       }
     });
 
@@ -1910,17 +2174,36 @@
       icons[currentIdx].setAttribute('tabindex', '-1');
       icons[nextIdx].setAttribute('tabindex', '0');
       icons[nextIdx].focus();
+      selectIcon(icons[nextIdx]);
     });
   }
 
   // --- Helpers ---
+  // True for controls that take typed text, where Escape and app hotkeys
+  // must leave the keystroke alone.
+  function isTextEntry(el) {
+    if (!el || !el.tagName) return false;
+    if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
+    if (el.tagName !== 'INPUT') return false;
+    return !/^(button|checkbox|radio|submit|reset|range|color|file|image)$/i.test(el.type);
+  }
+
   function getWindowRect(el) {
     return {
       x: parseInt(el.style.left) || 0,
       y: parseInt(el.style.top) || 0,
       w: parseInt(el.style.width) || 500,
-      h: parseInt(el.style.height) || 400
+      h: parseInt(el.style.height) || 400,
+      // Content-sized windows carry no inline height. Restore must leave
+      // them that way instead of pinning the 400px fallback, which grew
+      // Guestbook or Under Construction to 400px after a minimize.
+      autoH: !el.style.height
     };
+  }
+
+  // Inline height to write back on restore.
+  function restoredHeight(rect) {
+    return rect.autoH ? '' : rect.h + 'px';
   }
 
   function getTitleText(el) {
@@ -1995,6 +2278,41 @@
     if (curTop > maxTop) winEl.style.top = maxTop + 'px';
     if ((parseInt(winEl.style.left, 10) || 0) < pad) winEl.style.left = pad + 'px';
     if ((parseInt(winEl.style.top, 10) || 0) < pad) winEl.style.top = pad + 'px';
+  }
+
+  // Open-time fit for desktop and tablets. Keeps the full width, and so the
+  // close button, on screen: an iPad in portrait has only 512-556px of
+  // desktop under zoom 1.5, so the cascade offset pushed 500px windows past
+  // the right edge. Vertically it only steps in when the title bar itself
+  // would land under the taskbar. As in Win98, a tall window may run behind
+  // the taskbar, and leaving the cascade's vertical stagger alone keeps
+  // every earlier window's title bar clickable.
+  function keepWindowReachable(winEl) {
+    if (!winEl) return;
+    var z = getZoom();
+    winEl.style.maxHeight = '';
+    var rect = winEl.getBoundingClientRect();
+    var vw = window.innerWidth / z;
+    var vh = window.innerHeight / z;
+    var pad = 4;
+    var maxLeft = Math.max(pad, vw - rect.width / z - pad);
+    if ((parseInt(winEl.style.left, 10) || 0) > maxLeft) winEl.style.left = maxLeft + 'px';
+    var availBottom = vh - getTaskbarHeightCss(z) - pad;
+    var maxTop = Math.max(pad, vh - getTaskbarHeightCss(z) - DRAG_EDGE_MARGIN_Y);
+    if ((parseInt(winEl.style.top, 10) || 0) > maxTop) winEl.style.top = maxTop + 'px';
+    // A window too tall for its cascade slot would hide its bottom (Help's
+    // Previous/Next, dialog buttons) behind the taskbar. Cap its height to
+    // the room left so the body scrolls instead; with under ~200px left,
+    // lift it as high as it needs. Resizing or maximizing lifts the cap.
+    var top = parseInt(winEl.style.top, 10) || 0;
+    var h = rect.height / z;
+    if (top + h > availBottom) {
+      if (availBottom - top >= 200) {
+        winEl.style.maxHeight = (availBottom - top) + 'px';
+      } else {
+        winEl.style.top = Math.max(pad, availBottom - h) + 'px';
+      }
+    }
   }
 
   // U5: Occlusion recovery for taskbar-chip taps. After raising z-order
@@ -2121,6 +2439,8 @@
       img.width = 48;
       img.height = 48;
       icon.appendChild(img);
+      // Shape mask for the selection dither (style.css).
+      icon.style.setProperty('--icon-src', 'url("' + sys.icon + '")');
 
       var label = document.createElement('span');
       label.className = 'desktop-icon-label';
@@ -2138,7 +2458,7 @@
         // Create an "Under Construction" window
         var conWin = document.createElement('div');
         conWin.id = id;
-        conWin.className = 'window';
+        conWin.className = 'window construction-window';
         conWin.setAttribute('data-state', 'closed');
         conWin.setAttribute('role', 'dialog');
         conWin.setAttribute('tabindex', '-1');
@@ -2168,6 +2488,7 @@
         cavaroWin.style.width = '450px';
         cavaroWin.innerHTML =
           '<div class="title-bar">' +
+            '<img src="img/icons/notepad-sm.png" class="title-bar-icon" alt="" aria-hidden="true">' +
             '<div class="title-bar-text">cavaro.txt - Notepad</div>' +
             '<div class="title-bar-controls" role="toolbar" aria-label="Window controls">' +
               '<button aria-label="Minimize"></button>' +
@@ -2210,6 +2531,7 @@
       img.width = 48;
       img.height = 48;
       icon.appendChild(img);
+      icon.style.setProperty('--icon-src', 'url("' + img.getAttribute('src') + '")');
 
       var label = document.createElement('span');
       label.className = 'desktop-icon-label';
@@ -2363,11 +2685,18 @@
     hideAllContextMenus();
     // Divide by zoom factor since CSS position uses unzoomed coordinates
     var z = getZoom();
-    menuEl.style.left = (x / z) + 'px';
-    menuEl.style.top = (y / z) + 'px';
     menuEl.classList.add('open');
-    var firstItem = menuEl.querySelector('[role="menuitem"]');
-    if (firstItem) firstItem.focus();
+    // Win98 opens the menu with its corner at the pointer and flips it left
+    // or up when it would run off screen, which is why the taskbar menu
+    // opens upward. Measured after .open so the size is real.
+    var r = menuEl.getBoundingClientRect();
+    var left = x + r.width > window.innerWidth ? x - r.width : x;
+    var top = y + r.height > window.innerHeight ? y - r.height : y;
+    menuEl.style.left = (Math.max(0, left) / z) + 'px';
+    menuEl.style.top = (Math.max(0, top) / z) + 'px';
+    // Nothing is preselected; the menu takes focus so arrow keys still work.
+    if (!menuEl.hasAttribute('tabindex')) menuEl.setAttribute('tabindex', '-1');
+    menuEl.focus({ preventScroll: true });
   }
 
   function hideAllContextMenus() {
@@ -2386,32 +2715,86 @@
     elCtxTitlebar = document.getElementById('context-menu-titlebar');
     elCtxTaskbar = document.getElementById('context-menu-taskbar');
 
-    // Right-click on desktop
-    elDesktop.addEventListener('contextmenu', function(e) {
-      e.preventDefault();
+    // Which menu a secondary press opens, by what it landed on.
+    function openContextMenuFor(target, x, y) {
+      if (target.closest('#taskbar')) {
+        if (!target.closest('#start-button') && !target.closest('#start-menu') && elCtxTaskbar) {
+          showContextMenu(elCtxTaskbar, x, y);
+        }
+        return;
+      }
       // Title bar right-click
-      var titleBar = e.target.closest('.title-bar');
+      var titleBar = target.closest('.title-bar');
       if (titleBar) {
         var winEl = titleBar.closest('.window');
         if (winEl && windows.has(winEl.id)) {
           ctxTargetWindowId = winEl.id;
-          showContextMenu(elCtxTitlebar, e.clientX, e.clientY);
+          // Grey out what this window can't do, as Win98's window menu did.
+          var ctxMin = elCtxTitlebar.querySelector('[data-action="ctx-minimize"]');
+          var ctxMax = elCtxTitlebar.querySelector('[data-action="ctx-maximize"]');
+          if (ctxMin) ctxMin.disabled = !winEl.querySelector('.title-bar-controls [aria-label="Minimize"]');
+          if (ctxMax) ctxMax.disabled = winEl.getAttribute('data-no-resize') === 'true';
+          showContextMenu(elCtxTitlebar, x, y);
         }
         return;
       }
       // Desktop right-click (not on a window)
-      if (!e.target.closest('.window')) {
-        showContextMenu(elCtxDesktop, e.clientX, e.clientY);
+      if (elDesktop.contains(target) && !target.closest('.window')) {
+        showContextMenu(elCtxDesktop, x, y);
       }
+    }
+
+    // Right-click on desktop
+    elDesktop.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      openContextMenuFor(e.target, e.clientX, e.clientY);
     });
 
     // Right-click on taskbar
     document.getElementById('taskbar').addEventListener('contextmenu', function(e) {
       e.preventDefault();
-      if (!e.target.closest('#start-button') && !e.target.closest('#start-menu')) {
-        if (elCtxTaskbar) showContextMenu(elCtxTaskbar, e.clientX, e.clientY);
-      }
+      openContextMenuFor(e.target, e.clientX, e.clientY);
     });
+
+    // Tablets: iOS never sends contextmenu for a finger, so a still press of
+    // ~half a second stands in for the right button. The release that ends
+    // the press must not also click (that would close the new menu or open
+    // what was under the finger).
+    var longPress = null;
+    var longPressAt = 0;
+    function cancelLongPress() {
+      if (longPress) { clearTimeout(longPress.timer); longPress = null; }
+    }
+    document.addEventListener('pointerdown', function(e) {
+      cancelLongPress();
+      if (e.pointerType !== 'touch' || isMobile()) return;
+      var target = e.target;
+      var x = e.clientX;
+      var y = e.clientY;
+      longPress = {
+        x: x,
+        y: y,
+        timer: setTimeout(function() {
+          longPress = null;
+          longPressAt = Date.now();
+          openContextMenuFor(target, x, y);
+        }, 550)
+      };
+    }, true);
+    document.addEventListener('pointermove', function(e) {
+      if (longPress && (Math.abs(e.clientX - longPress.x) > 8 || Math.abs(e.clientY - longPress.y) > 8)) {
+        cancelLongPress();
+      }
+    }, true);
+    document.addEventListener('pointerup', cancelLongPress, true);
+    document.addEventListener('pointercancel', cancelLongPress, true);
+    window.addEventListener('click', function(e) {
+      if (Date.now() - longPressAt < 700) {
+        longPressAt = 0;
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
 
     // Single document-click delegator: capture the target window id BEFORE hiding
     // menus (hideAllContextMenus nulls ctxTargetWindowId), then dispatch the action,
@@ -2459,15 +2842,29 @@
       hideAllContextMenus();
     });
 
-    // Keyboard in context menus
+    // Keyboard in context menus. Focus follows the mouse so the keyboard
+    // and pointer share one highlight.
     [elCtxDesktop, elCtxTitlebar, elCtxTaskbar].forEach(function(menu) {
       if (!menu) return;
+      menu.addEventListener('mouseover', function(e) {
+        var hovered = e.target.closest('[role="menuitem"]');
+        if (hovered && hovered !== document.activeElement) hovered.focus({ preventScroll: true });
+      });
       menu.addEventListener('keydown', function(e) {
-        var items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+        var items = Array.from(menu.querySelectorAll('[role="menuitem"]:not(:disabled)'));
         var idx = items.indexOf(document.activeElement);
         if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
-        else if (e.key === 'Escape') { hideAllContextMenus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); items[idx <= 0 ? items.length - 1 : idx - 1].focus(); }
+        else if (e.key === 'Escape') { e.stopPropagation(); hideAllContextMenus(); }
+        else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          // The underlined letter picks its item, as in Win98.
+          var ch = e.key.toLowerCase();
+          var hit = items.filter(function(el) {
+            var u = el.querySelector('u');
+            return u && u.textContent.toLowerCase() === ch && !el.disabled;
+          })[0];
+          if (hit) { e.preventDefault(); hit.click(); }
+        }
       });
     });
   }
@@ -2484,6 +2881,14 @@
       // Only start selection on empty desktop space (not on icons, windows, taskbar)
       if (e.target !== elDesktop && e.target !== elIconGrid) return;
       if (e.button !== 0) return;
+
+      // A press on bare desktop clears the icon selection straight away and
+      // must not start a text selection (it used to sweep up the hidden
+      // screen-reader text).
+      e.preventDefault();
+      elIconGrid.querySelectorAll('.desktop-icon[data-selected="true"]').forEach(function(ic) {
+        ic.setAttribute('data-selected', 'false');
+      });
 
       var z = getZoom();
       var rect = elDesktop.getBoundingClientRect();
@@ -2526,27 +2931,28 @@
       elSelectionRect.style.top = y + 'px';
       elSelectionRect.style.width = w + 'px';
       elSelectionRect.style.height = h + 'px';
+      // Icons light up as the band sweeps over them, as in Win98.
+      selectIconsInBand();
     });
+
+    // Select exactly the icons the band currently overlaps.
+    function selectIconsInBand() {
+      var selRect = elSelectionRect.getBoundingClientRect();
+      if (selRect.width <= 5 && selRect.height <= 5) return;
+      elIconGrid.querySelectorAll('.desktop-icon').forEach(function(ic) {
+        var icRect = ic.getBoundingClientRect();
+        var hit = icRect.right > selRect.left && icRect.left < selRect.right &&
+                  icRect.bottom > selRect.top && icRect.top < selRect.bottom;
+        ic.setAttribute('data-selected', hit ? 'true' : 'false');
+      });
+    }
 
     function endSelection(e) {
       if (!selectionState.active) return;
       selectionState.active = false;
 
       // Check which icons intersect the selection rect
-      var selRect = elSelectionRect.getBoundingClientRect();
-      if (selRect.width > 5 || selRect.height > 5) {
-        var icons = elIconGrid.querySelectorAll('.desktop-icon');
-        icons.forEach(function(ic) {
-          ic.setAttribute('data-selected', 'false');
-        });
-        icons.forEach(function(ic) {
-          var icRect = ic.getBoundingClientRect();
-          if (icRect.right > selRect.left && icRect.left < selRect.right &&
-              icRect.bottom > selRect.top && icRect.top < selRect.bottom) {
-            ic.setAttribute('data-selected', 'true');
-          }
-        });
-      }
+      selectIconsInBand();
 
       elSelectionRect.style.display = 'none';
 
@@ -2606,9 +3012,27 @@
     li.classList.add('submenu-open');
     var trigger = li.querySelector(':scope > [aria-haspopup]');
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    fitSubmenu(li);
     // B6: inject back-bar on mobile so the user can return from a
     // covered parent menu.
     ensureSubmenuBackBar(li);
+  }
+
+  // Win98 opens a cascade to the left when there's no room on the right and
+  // lifts it to stay above the taskbar. Phones slide submenus in instead.
+  function fitSubmenu(li) {
+    if (isMobile()) return;
+    var sub = li.querySelector(':scope > .start-submenu');
+    if (!sub) return;
+    li.classList.remove('submenu-flip');
+    sub.style.top = '';
+    var r = sub.getBoundingClientRect();
+    if (r.right > window.innerWidth) li.classList.add('submenu-flip');
+    var overflow = r.bottom - (window.innerHeight - getTaskbarHeight());
+    if (overflow > 0) {
+      var lift = Math.min(overflow, r.top);
+      sub.style.top = (parseFloat(getComputedStyle(sub).top) - lift / getZoom()) + 'px';
+    }
   }
 
   function closeSubmenu(li) {
@@ -2629,41 +3053,65 @@
   }
 
   function initSubmenus() {
+    // Last pointer type to press inside the Start menu. A finger on a tablet
+    // (which keeps the desktop layout) toggles a cascade at once instead of
+    // waiting out the 350ms hover delay; a trackpad or mouse keeps hover.
+    var menuPointerType = '';
+    var startMenuEl = document.getElementById('start-menu');
+    if (startMenuEl) {
+      startMenuEl.addEventListener('pointerdown', function(e) {
+        menuPointerType = e.pointerType;
+      });
+    }
+    function tapDriven() { return isMobile() || menuPointerType === 'touch'; }
+
     document.querySelectorAll('.has-submenu').forEach(function(li) {
       // Hover-cascade is mouse-only. On touch devices, iOS Safari synthesizes
       // a mouseenter on tap (because there's no hover state), and the 350ms
       // deferred openSubmenu races mobile's tap-to-toggle handler below —
       // the deferred fire reopens a submenu the back-tap just closed. Gate
-      // both hover listeners on !isMobile() so the tap path owns submenu
-      // state exclusively on touch.
+      // both hover listeners on tap-driven input so the tap path owns
+      // submenu state exclusively on touch.
       li.addEventListener('mouseenter', function() {
-        if (isMobile()) return;
+        if (tapDriven()) return;
         clearTimeout(submenuTimeout);
         var target = li;
         submenuTimeout = setTimeout(function() { openSubmenu(target); }, 350);
       });
-      li.addEventListener('mouseleave', function() {
+      li.addEventListener('mouseleave', function(e) {
         if (isMobile()) return;
         clearTimeout(submenuTimeout);
+        // Leaving the menu altogether keeps the open cascade, as in Win98;
+        // only moving onto another row closes it.
+        if (!e.relatedTarget || !elStartMenu.contains(e.relatedTarget)) return;
         var target = li;
         submenuTimeout = setTimeout(function() { closeSubmenu(target); }, 200);
       });
 
-      // U3: tap-to-toggle on touch (mouse path unchanged). The parent
-      // <button class="start-menu-item"> carries aria-haspopup, so we
-      // intercept its click and stop propagation to keep the start-menu
-      // delegator (which closes the menu on any click) from firing.
-      // openSubmenu/closeSubmenu already toggle aria-expanded.
+      // U3: tap-to-toggle on touch. The parent <button class="start-menu-item">
+      // carries aria-haspopup, so we intercept its click and stop propagation
+      // to keep the start-menu delegator (which closes the menu on any click)
+      // from firing. openSubmenu/closeSubmenu already toggle aria-expanded.
+      // A mouse click (or Enter) opens the cascade at once, as Win98 did,
+      // rather than waiting out the hover delay; Enter also moves into it.
       var trigger = li.querySelector(':scope > [aria-haspopup]');
       if (trigger) {
         trigger.addEventListener('click', function(e) {
-          if (!isMobile()) return;
           e.preventDefault();
           e.stopPropagation();
-          if (li.classList.contains('submenu-open')) {
-            closeSubmenu(li);
-          } else {
-            openSubmenu(li);
+          if (tapDriven()) {
+            if (li.classList.contains('submenu-open')) {
+              closeSubmenu(li);
+            } else {
+              openSubmenu(li);
+            }
+            return;
+          }
+          clearTimeout(submenuTimeout);
+          openSubmenu(li);
+          if (e.detail === 0) {
+            var first = li.querySelector(':scope > .start-submenu [role="menuitem"]');
+            if (first) first.focus();
           }
         });
       }
@@ -2683,6 +3131,19 @@
   }
 
   // --- Shut Down ---
+  // Win98 dims the whole screen with a 50% black dither while Shut Down is
+  // up, and nothing behind the dialog takes clicks (html.shutdown-dim in
+  // style.css). Watching data-state covers every way the dialog opens and
+  // closes. Phones keep their plain dialog.
+  function watchShutdownDim() {
+    var dlg = document.getElementById('window-shutdown');
+    if (!dlg || typeof MutationObserver !== 'function') return;
+    new MutationObserver(function() {
+      var dim = dlg.getAttribute('data-state') === 'open' && !isMobile();
+      document.documentElement.classList.toggle('shutdown-dim', dim);
+    }).observe(dlg, { attributes: true, attributeFilter: ['data-state'] });
+  }
+
   function handleShutdown() {
     var option = document.querySelector('input[name="shutdown-option"]:checked');
     if (!option) return;
@@ -2765,15 +3226,24 @@
     if (opts.height) win.style.height = opts.height;
     if (opts.noResize) win.setAttribute('data-no-resize', 'true');
 
+    // Fixed-size apps (Calculator, Minesweeper) can still be minimized: Win98
+    // draws their Maximize greyed out beside Minimize. Phones keep the lone
+    // Close button their layout expects.
     var controls = opts.noResize
-      ? '<button aria-label="Close"></button>'
+      ? (opts.minimizable && !isMobile()
+          ? '<button aria-label="Minimize"></button><button aria-label="Maximize" disabled></button><button aria-label="Close"></button>'
+          : '<button aria-label="Close"></button>')
       : '<button aria-label="Minimize"></button><button aria-label="Maximize"></button><button aria-label="Close"></button>';
 
     var bodyStyle = opts.bodyStyle ? ' style="' + opts.bodyStyle + '"' : '';
+    // Each app shows its own caption icon (it also lands on the taskbar
+    // button); dialogs pass icon:false because Win98 dialogs have none.
+    var iconHtml = opts.icon === false ? '' :
+      '<img src="' + (opts.icon || 'img/icons/project-sm.png') + '" class="title-bar-icon" alt="" aria-hidden="true">';
 
     win.innerHTML =
       '<div class="title-bar">' +
-        '<img src="img/icons/project-sm.png" class="title-bar-icon" alt="" aria-hidden="true">' +
+        iconHtml +
         '<div class="title-bar-text" id="title-' + id.replace('window-', '') + '">' + title + '</div>' +
         '<div class="title-bar-controls" role="toolbar" aria-label="Window controls">' +
           controls +
@@ -2784,6 +3254,9 @@
     elDesktop.appendChild(win);
     registerWindow(id, win, { transient: !!opts.transient });
     openWindow(id);
+    // A content-sized window ('auto') is pinned to its measured width: the
+    // window manager saves and restores px rects across minimize.
+    if (opts.width === 'auto') win.style.width = getComputedStyle(win).width;
   }
 
   function launchPaint() {
@@ -2813,7 +3286,7 @@
         '</div>' +
         '<iframe src="https://jspaint.app" sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox allow-forms" style="width:100%;height:100%;border:none;flex:1;"></iframe>';
     createAppWindow('window-paint', 'untitled - Paint', paintBody,
-      { width: '640px', height: '480px', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;position:relative;' });
+      { width: '640px', height: '480px', icon: 'img/icons/paint-sm.png', bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;position:relative;' });
 
     // Fade the loading panel out once jspaint.app loads. The iframe 'load' fires
     // for cross-origin frames too, and can't have fired before this synchronous
@@ -2831,18 +3304,32 @@
 
   function launchMinesweeper() {
     var msHtml =
+      '<div class="ms-menu-bar">' +
+        '<button type="button" class="ms-menu-title" id="ms-game-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="ms-game-menu"><u>G</u>ame</button>' +
+        '<div class="ms-dropdown" id="ms-game-menu" role="menu" aria-label="Game" hidden>' +
+          '<button type="button" role="menuitem" data-ms="new" data-key="n"><span><u>N</u>ew</span><span>F2</span></button>' +
+          '<div class="ms-sep" role="separator"></div>' +
+          '<button type="button" role="menuitemradio" data-ms="beginner" data-key="b" aria-checked="true"><span><u>B</u>eginner</span></button>' +
+          '<button type="button" role="menuitemradio" data-ms="intermediate" data-key="i" aria-checked="false"><span><u>I</u>ntermediate</span></button>' +
+          '<button type="button" role="menuitemradio" data-ms="expert" data-key="e" aria-checked="false"><span><u>E</u>xpert</span></button>' +
+          '<div class="ms-sep" role="separator"></div>' +
+          '<button type="button" role="menuitem" data-ms="exit" data-key="x"><span>E<u>x</u>it</span></button>' +
+        '</div>' +
+      '</div>' +
       '<div id="ms-app">' +
         '<div id="header">' +
           '<div class="counter" id="mine-count">010</div>' +
-          '<button id="face">&#128578;</button>' +
+          '<button type="button" id="face" aria-label="New game"></button>' +
           '<div class="counter" id="timer">000</div>' +
         '</div>' +
         '<div id="grid"></div>' +
-        '<div id="msg"></div>' +
+        '<div id="msg" class="ms-sr" aria-live="polite"></div>' +
       '</div>';
 
+    // width:auto lets the window wrap the board; game.js pins the measured
+    // width once the board is built.
     createAppWindow('window-minesweeper', 'Minesweeper', msHtml,
-      { width: '250px', noResize: true, bodyStyle: 'padding:4px;margin:0;background:#c0c0c0;' });
+      { width: 'auto', noResize: true, minimizable: true, icon: 'img/icons/minesweeper-sm.png', bodyStyle: 'padding:0;margin:0;' });
 
     // Load script once per page, then call init every launch. The init
     // is internally idempotent (wires handlers on first call only) and
@@ -2927,6 +3414,7 @@
     }
 
     createAppWindow('window-help-book', 'The Way of Code - Help', '', {
+      icon: 'img/icons/help-32.png',
       width: '400px',
       height: '600px',
       bodyStyle: 'display:flex;flex-direction:column;padding:0;overflow:hidden;'
@@ -2936,42 +3424,40 @@
   }
 
   function launchCalculator() {
+    // Win98's Standard view: display, then the memory light beside
+    // Backspace/CE/C, then the memory column beside the keypad. Red keys
+    // edit or store; blue keys enter numbers and functions.
+    var calcKeys = [
+      ['7', 'v'], ['8', 'v'], ['9', 'v'], ['/', 'op', 'red'], ['sqrt', 'sqrt'],
+      ['4', 'v'], ['5', 'v'], ['6', 'v'], ['*', 'op', 'red'], ['%', 'pct'],
+      ['1', 'v'], ['2', 'v'], ['3', 'v'], ['-', 'op', 'red'], ['1/x', 'inv'],
+      ['0', 'v'], ['+/-', 'neg'], ['.', 'v'], ['+', 'op', 'red'], ['=', 'eq', 'red']
+    ].map(function(k) {
+      var cls = k[2] ? ' class="' + k[2] + '"' : '';
+      if (k[1] === 'v') return '<button data-v="' + k[0] + '"' + cls + '>' + k[0] + '</button>';
+      if (k[1] === 'op') return '<button data-op="' + k[0] + '"' + cls + '>' + k[0] + '</button>';
+      return '<button id="' + k[1] + '"' + cls + '>' + k[0] + '</button>';
+    }).join('');
     var calcHtml =
       '<div id="calc-app">' +
         '<div id="calc">' +
+          '<div id="display" class="no-point">0</div>' +
           '<div id="display-mem"></div>' +
-          '<div id="display">0</div>' +
-          '<div class="row">' +
-            '<button id="mc">MC</button><button id="mr">MR</button>' +
-            '<button id="ms">MS</button><button id="mp">M+</button>' +
+          '<div class="calc-edit">' +
+            '<button id="back" class="red">Backspace</button>' +
+            '<button id="ce" class="red">CE</button>' +
+            '<button id="clr" class="red">C</button>' +
           '</div>' +
-          '<div class="row">' +
-            '<button data-v="7">7</button><button data-v="8">8</button>' +
-            '<button data-v="9">9</button><button class="op" data-op="/">/</button>' +
-            '<button class="op" id="sqrt">sqrt</button>' +
+          '<div class="calc-mem">' +
+            '<button id="mc" class="red">MC</button><button id="mr" class="red">MR</button>' +
+            '<button id="ms" class="red">MS</button><button id="mp" class="red">M+</button>' +
           '</div>' +
-          '<div class="row">' +
-            '<button data-v="4">4</button><button data-v="5">5</button>' +
-            '<button data-v="6">6</button><button class="op" data-op="*">*</button>' +
-            '<button class="op" id="pct">%</button>' +
-          '</div>' +
-          '<div class="row">' +
-            '<button data-v="1">1</button><button data-v="2">2</button>' +
-            '<button data-v="3">3</button><button class="op" data-op="-">-</button>' +
-            '<button class="op" id="inv">1/x</button>' +
-          '</div>' +
-          '<div class="row">' +
-            '<button data-v="0" class="wide">0</button><button data-v=".">.</button>' +
-            '<button class="op" data-op="+">+</button><button class="op" id="eq">=</button>' +
-          '</div>' +
-          '<div class="row">' +
-            '<button id="back">Bksp</button><button id="ce">CE</button><button id="clr">C</button>' +
-          '</div>' +
+          '<div class="calc-keys">' + calcKeys + '</div>' +
         '</div>' +
       '</div>';
 
     createAppWindow('window-calculator', 'Calculator', calcHtml,
-      { width: '240px', noResize: true, bodyStyle: 'padding:4px;margin:0;background:#c0c0c0;' });
+      { width: 'auto', noResize: true, minimizable: true, icon: 'img/icons/calculator-sm.png', bodyStyle: 'padding:0;margin:0;' });
 
     // Same pattern as Minesweeper. Previously the calc script attached a
     // fresh global keydown handler on every launch, so after N opens a
@@ -2984,8 +3470,13 @@
     var id = 'window-notepad-' + Date.now();
     createAppWindow(id, 'Untitled - Notepad',
       '<div class="notepad-menu-bar" aria-hidden="true"><span>File</span><span>Edit</span><span>Format</span><span>Help</span></div>' +
-      '<textarea style="width:100%;flex:1;border:none;padding:4px;font-family:\'Lucida Console\',\'Courier New\',monospace;font-size:12px;resize:none;box-sizing:border-box;" placeholder=""></textarea>',
-      { width: '400px', height: '300px', bodyStyle: 'display:flex;flex-direction:column;padding:0;', transient: true });
+      '<textarea class="notepad-textarea" style="width:100%;flex:1;border:none;padding:4px;resize:none;box-sizing:border-box;" placeholder=""></textarea>',
+      { width: '400px', height: '300px', icon: 'img/icons/notepad-sm.png', bodyStyle: 'display:flex;flex-direction:column;padding:0;', transient: true });
+    // The menu bar belongs to the frame, above the edit area, as in the
+    // hand-authored Notepad windows (style.css keys their layout off it).
+    var winEl = document.getElementById(id);
+    var menuBar = winEl && winEl.querySelector('.window-body > .notepad-menu-bar');
+    if (menuBar) winEl.insertBefore(menuBar, menuBar.parentNode);
   }
 
   function launchRun() {
@@ -3016,13 +3507,13 @@
         '</div>' +
       '</div>' +
       '<div style="text-align:right;">' +
-        '<button class="run-ok-btn" style="min-width:75px;">OK</button>' +
+        '<button class="run-ok-btn default" style="min-width:75px;">OK</button>' +
         '<button data-close-window="' + runId + '" style="min-width:75px;margin-left:4px;">Cancel</button>' +
         '<button style="min-width:75px;margin-left:4px;" disabled>Browse...</button>' +
       '</div>';
 
     createAppWindow(runId, 'Run', bodyHtml,
-      { width: '320px', noResize: true, bodyStyle: 'padding:12px;background:#c0c0c0;' });
+      { width: '320px', noResize: true, icon: false, bodyStyle: 'padding:12px;background:#c0c0c0;overflow:visible;' });
 
     var win = document.getElementById(runId);
     var input = win.querySelector('#run-input');
@@ -3148,7 +3639,7 @@
         '<div class="status-bar napster-status"><p class="status-bar-field">8,342 users sharing 1,247,382 files</p></div>';
 
       createAppWindow('window-napster', 'Napster v2.0 BETA 7', bodyHtml,
-        { width: '520px', height: '420px', bodyStyle: 'padding:4px;background:var(--win98-silver);display:flex;flex-direction:column;overflow:hidden;' });
+        { width: '520px', height: '420px', icon: 'img/icons/napster-sm.png', bodyStyle: 'padding:4px;background:var(--win98-silver);display:flex;flex-direction:column;overflow:hidden;' });
 
       if (window.__initNapster) window.__initNapster();
     }
@@ -3178,12 +3669,12 @@
       }
     }
 
-    createAppWindow('window-matrix', 'C:\\WINDOWS\\system32\\cmd.exe',
+    createAppWindow('window-matrix', 'MS-DOS Prompt',
       '<div id="matrix-terminal" style="background:#000;color:#00FF00;font-family:\'Perfect DOS VGA 437\',\'Lucida Console\',monospace;font-size:14px;padding:8px;height:100%;position:relative;overflow:hidden;">' +
         '<div id="matrix-text"></div>' +
         '<canvas id="matrix-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;display:none;"></canvas>' +
       '</div>',
-      { width: '500px', height: '400px', bodyStyle: 'padding:0;overflow:hidden;' });
+      { icon: DOS_ICON, width: '500px', height: '400px', bodyStyle: 'padding:0;overflow:hidden;' });
 
     var textEl = document.getElementById('matrix-text');
     var canvasEl = document.getElementById('matrix-canvas');
@@ -3299,6 +3790,7 @@
     var preExisting = !!document.getElementById('window-icq');
 
     createAppWindow('window-icq', 'ICQ', icqHtml, {
+      icon: 'img/icons/icq-sm.png',
       width: '170px',
       height: '400px',
       noResize: true,
@@ -3346,7 +3838,7 @@
         '</div>' +
       '</div>';
     createAppWindow('window-dos', 'MS-DOS Prompt', bodyHtml,
-      { width: '560px', height: '380px', bodyStyle: 'padding:0;overflow:hidden;' });
+      { width: '560px', height: '380px', icon: DOS_ICON, bodyStyle: 'padding:0;overflow:hidden;' });
     function runInit() {
       if (window.__initDos) window.__initDos(document.getElementById('window-dos'));
     }
@@ -3443,7 +3935,7 @@
           '<select id="dispprop-scheme" style="flex:1;">' + listHtml + '</select>' +
         '</div>' +
         '<div style="text-align:right;margin-top:16px;">' +
-          '<button id="dispprop-ok" style="min-width:75px;">OK</button>' +
+          '<button id="dispprop-ok" class="default" style="min-width:75px;">OK</button>' +
           '<button id="dispprop-cancel" style="min-width:75px;margin-left:4px;">Cancel</button>' +
           '<button id="dispprop-apply" style="min-width:75px;margin-left:4px;">Apply</button>' +
         '</div>' +
@@ -3451,7 +3943,7 @@
     // Transient so each open rebuilds fresh state — no stale closures or
     // reused listeners across reopens.
     createAppWindow('window-display-properties', 'Display Properties', bodyHtml,
-      { width: '320px', noResize: true, transient: true, bodyStyle: 'padding:14px;background:var(--win98-silver);' });
+      { width: '320px', noResize: true, transient: true, icon: false, bodyStyle: 'padding:14px;background:var(--win98-silver);' });
 
     var winEl = document.getElementById('window-display-properties');
     if (!winEl) return;
@@ -3561,6 +4053,7 @@
     initContactForm();
     initMyComputer();
     setupSystemTrayClicks();
+    watchShutdownDim();
     initSoundToggle();
     window.Win98Tooltips.setup({ getZoom: getZoom, sourceFor: tooltipSourceFor });
     setupContextMenus();

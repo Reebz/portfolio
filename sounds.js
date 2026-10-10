@@ -65,9 +65,11 @@
   // Warm two-note rising chime (~1s): A4 then a perfect-fifth-up E5, low gain,
   // soft envelopes. Synthesized conservatively — no attempt to mimic the real
   // Win98 startup sound. Plays at boot completion on the first user gesture.
-  function playStartup() {
+  // `delay` (seconds, optional) lets boot.js unlock audio inside a skip
+  // gesture yet land the chime when the desktop paints.
+  function playStartup(delay) {
     play(function(c) {
-      var t = c.currentTime + 0.02;
+      var t = c.currentTime + 0.02 + (delay || 0);
       note(c, 440, t, 0.5, 0.13, 'sine');
       note(c, 659.25, t + 0.26, 0.7, 0.13, 'sine');
     });

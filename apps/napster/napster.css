@@ -13,7 +13,7 @@
   padding: 4px 14px;
   font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
   font-size: 11px;
-  cursor: default;
+  cursor: inherit;
   background: var(--win98-silver);
   border: 1px solid var(--win98-grey);
   border-bottom: none;
@@ -106,7 +106,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  cursor: default;
+  cursor: inherit;
   user-select: none;
 }
 
@@ -120,7 +120,7 @@
 }
 
 .napster-row {
-  cursor: default;
+  cursor: inherit;
 }
 
 .napster-row:hover {

@@ -35,10 +35,10 @@ test.describe('Mobile — no overflow on chrome containers', () => {
     await page.goto('/');
     await page.evaluate(() => sessionStorage.setItem('booted', '1'));
     await page.goto('/');
-    // Icon-grid children are JS-injected; wait for the full 14 (5 system + 9
+    // Icon-grid children are JS-injected; wait for the full 13 (5 system + 8
     // projects) so computed styles are valid. Same gate as mobile-icons-grid.
     await page.waitForFunction(
-      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 14
+      () => document.querySelectorAll('#icon-grid .desktop-icon').length >= 13
     );
     await page.waitForTimeout(150);
   });

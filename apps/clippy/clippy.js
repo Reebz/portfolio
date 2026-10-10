@@ -40,9 +40,11 @@
         '<g fill="none" stroke="#8a8a8a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M20 30 v34 a12 12 0 0 0 24 0 V22 a8 8 0 0 0 -16 0 v40 a4 4 0 0 0 8 0 V30"/>' +
         '</g>' +
-        '<g class="clippy-brows" stroke="#333" stroke-width="3" stroke-linecap="round">' +
-          '<line x1="21" y1="20" x2="30" y2="24"/>' +
-          '<line x1="43" y1="20" x2="34" y2="24"/>' +
+        // Raised, arched brows: Clippy's eager look. (Lines sloping down to
+        // the middle read as a frown.)
+        '<g class="clippy-brows" fill="none" stroke="#333" stroke-width="3" stroke-linecap="round">' +
+          '<path d="M19 22 Q24 15 31 19"/>' +
+          '<path d="M33 19 Q40 15 45 22"/>' +
         '</g>' +
         '<g class="clippy-eyes">' +
           '<circle cx="26" cy="32" r="6" fill="#fff" stroke="#333" stroke-width="2"/>' +

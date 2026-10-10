@@ -39,6 +39,7 @@
 
   // --- DOS Beep ---
   function dosBeep() {
+    if (window.Sounds && window.Sounds.isSoundEnabled && !window.Sounds.isSoundEnabled()) return;
     try {
       var ctx = new (window.AudioContext || window.webkitAudioContext)();
       var osc = ctx.createOscillator();
@@ -53,6 +54,11 @@
     } catch (e) {}
   }
 
+  // Warm the splash image now so stage 4 can paint it without a wait.
+  var splashSrc = 'img/win98-boot-splash.webp';
+  var splashPrefetch = new Image();
+  splashPrefetch.src = splashSrc;
+
   // --- Create overlay ---
   var overlay = document.createElement('div');
   overlay.id = 'boot-overlay';
@@ -60,7 +66,8 @@
     'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;' +
     'background:#000000;color:' + LGRAY + ';' +
     'font-family:"Perfect DOS VGA 437","Lucida Console","Courier New",monospace;' +
-    'font-size:16px;line-height:1.4;cursor:default;overflow:hidden;padding:0;margin:0;';
+    'font-size:16px;line-height:1;cursor:none;overflow:hidden;padding:0;margin:0;' +
+    'display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:none;';
   overlay.setAttribute('role', 'status');
   overlay.setAttribute('aria-label', 'System startup');
   document.body.appendChild(overlay);
@@ -69,7 +76,12 @@
   var taskbar = document.getElementById('taskbar');
   var startMenu = document.getElementById('start-menu');
 
+  // The splash cuts to a black screen, then the desktop paints in two steps.
+  var CUT_MS = 300;
+  var PAINT_MS = 250;
+
   var stage = 0;
+  var finished = false;
   var timers = [];
   var lineIndex;
   var outputEl;
@@ -115,24 +127,26 @@
 
     if (stage === 1) {
       // =============== POST SCREEN — black bg, light gray text ===============
+      // An 80x25 text-mode screen (720x400 in the VGA font's 9x16 cells),
+      // sized in ch/em so fitPostScreen can scale it by font-size alone.
+      // white-space:pre keeps the BIOS columns; the screen never wraps.
       overlay.innerHTML =
-        '<div style="position:relative;padding:8px 16px;height:100%;box-sizing:border-box;">' +
-          // Energy Star logo — top right, LARGE per reference
-          '<div style="position:absolute;top:0;right:0;text-align:center;">' +
-            '<img src="img/energystar.png" alt="Energy Star"' +
-            ' style="width:400px;height:auto;image-rendering:auto;opacity:0.95;">' +
-          '</div>' +
-          // POST output — left side, leave room for logo
-          '<div id="post-output" style="max-width:calc(100% - 420px);"></div>' +
-          // Bottom section — press F1/DEL + BIOS ID
-          '<div id="post-bottom" style="position:absolute;bottom:12px;left:16px;display:none;">' +
-            '<div>&nbsp;</div>' +
+        '<div id="post-screen" style="position:relative;width:80ch;height:25em;white-space:pre;overflow:hidden;">' +
+          // Energy Star logo — top right, cropped to the artwork so its black
+          // margin can't cover text (about 20 columns by 7 rows)
+          '<div role="img" aria-label="Energy Star" style="position:absolute;top:0.5em;right:0;width:11.25em;height:7.3em;' +
+            'background:url(img/energystar.png) -2.2em -4.43em / 16.07em 16.07em no-repeat;"></div>' +
+          '<div id="post-output"></div>' +
+          // Bottom section — press F1/DEL + BIOS ID on the last two rows
+          '<div id="post-bottom" style="position:absolute;bottom:0;left:0;display:none;">' +
             '<div>Press ' + hi('F1') + ' to continue, ' + hi('DEL') + ' to enter SETUP</div>' +
             '<div style="color:' + BROWN + ';">03/25/2026-i440BX-W977-2A69KM4NC-00</div>' +
           '</div>' +
         '</div>';
 
       outputEl = document.getElementById('post-output');
+      fitPostScreen();
+      window.addEventListener('resize', fitPostScreen);
       lineIndex = 0;
       typeNextLine();
       return;
@@ -154,26 +168,36 @@
       // Decode the splash image before painting the overlay so we never get a
       // black-flash-with-floating-progress-bar moment on slow connections.
       // Cap the wait at 200ms so a stalled image can't hold up boot indefinitely.
-      var splashSrc = 'img/win98-boot-splash.webp';
       var splashImg = new Image();
       var paintedSplash = false;
       var paintSplash = function() {
         if (paintedSplash) return;
         paintedSplash = true;
-        overlay.style.backgroundColor = '#000';
-        overlay.style.backgroundImage = "url('" + splashSrc + "')";
-        overlay.style.backgroundSize = 'cover';
-        overlay.style.backgroundPosition = 'center center';
-        overlay.style.backgroundRepeat = 'no-repeat';
+        // The art fills the screen. On portrait and near-square screens a
+        // full-bleed crop would cut off the wordmark, so the whole image sits
+        // centred with faded edges over a soft fill taken from its cloud-only
+        // top-left corner.
+        // The band is Win98's progress strip: full width along the bottom
+        // edge, a blue gradient scrolling right forever (LOGO.SYS palette
+        // cycling). One gradient period spans the screen; the 200%-wide strip
+        // slides one period per loop, so the seam never shows.
         overlay.innerHTML =
           '<style>' +
-            '@keyframes win98-progress {' +
-              '0% { transform: translateX(-160px); }' +
-              '100% { transform: translateX(480px); }' +
+            '@keyframes win98-splash-band { from { transform: translateX(-50%); } to { transform: translateX(0); } }' +
+            '#splash-fill { position:absolute; inset:0; display:none; background:url(' + splashSrc + ') 0 0 / 400% auto no-repeat; }' +
+            '#splash-art { position:absolute; inset:0; background:url(' + splashSrc + ') center / cover no-repeat; }' +
+            '@media (max-aspect-ratio: 6/5) {' +
+              '#splash-fill { display:block; }' +
+              '#splash-art { inset:auto 0; top:50%; transform:translateY(-50%); aspect-ratio:1080/569; background-size:100% 100%;' +
+                '-webkit-mask-image:linear-gradient(transparent,#000 15%,#000 85%,transparent);' +
+                'mask-image:linear-gradient(transparent,#000 15%,#000 85%,transparent); }' +
             '}' +
           '</style>' +
-          '<div style="position:absolute;left:50%;bottom:32px;transform:translateX(-50%);width:480px;height:16px;background:linear-gradient(180deg,#0a1450 0%,#1a2c7a 100%);border:1px solid;border-color:#000820 #6378b8 #6378b8 #000820;box-shadow:inset 0 0 1px rgba(0,0,0,0.6);overflow:hidden;">' +
-            '<div style="width:160px;height:100%;background:linear-gradient(90deg,rgba(72,116,232,0) 0%,rgba(72,116,232,0.55) 18%,#7aa6ff 50%,rgba(72,116,232,0.55) 82%,rgba(72,116,232,0) 100%);animation:win98-progress 1.6s linear infinite;"></div>' +
+          '<div id="splash-fill"></div>' +
+          '<div id="splash-art"></div>' +
+          '<div style="position:absolute;left:0;right:0;bottom:0;height:2.6%;min-height:6px;overflow:hidden;">' +
+            '<div style="width:200%;height:100%;will-change:transform;animation:win98-splash-band 1.8s linear infinite;' +
+              'background:linear-gradient(90deg,#0a1450,#1a3aa8 20%,#4f86f0 38%,#b8d4ff 50%,#4f86f0 62%,#1a3aa8 80%,#0a1450) 0 0 / 50% 100% repeat-x;"></div>' +
           '</div>';
         track(setTimeout(nextStage, 2200));
       };
@@ -185,6 +209,18 @@
     } else {
       completeBoot();
     }
+  }
+
+  // Fit the text-mode screen to the viewport like a CRT: as large as both
+  // dimensions allow (80 columns are 45em wide, 25 rows are 25em tall),
+  // centred on black. The overlay lives inside the zoomed body, so measure
+  // in its units.
+  function fitPostScreen() {
+    var screenEl = document.getElementById('post-screen');
+    if (!screenEl) return;
+    var z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    var size = Math.min(window.innerWidth / z / 45, window.innerHeight / z / 25);
+    screenEl.style.fontSize = size + 'px';
   }
 
   function typeNextLine() {
@@ -204,35 +240,56 @@
     track(setTimeout(typeNextLine, line.delay));
   }
 
-  function completeBoot() {
+  // `e` is the click or keydown that skipped boot; the deadman and the
+  // natural end of the splash pass nothing.
+  function completeBoot(e) {
+    if (finished) return;
+    finished = true;
     clearTimers();
     clearTimeout(deadman);
-    safeSetItem(sessionStorage, 'booted', '1');
-    // Arm the Win98 startup chime — it plays on the first post-boot gesture
-    // (autoplay policy keeps AudioContext suspended until then). Guarded so a
-    // missing sounds.js can never wedge boot teardown.
-    if (window.Sounds && typeof window.Sounds.armStartup === 'function') {
-      window.Sounds.armStartup();
-    }
-    // Notify desktop.js that a real boot finished (desktop only; boot is
-    // skipped on phones and when 'booted' is pre-seeded). Guarded so a missing
-    // handler can never wedge boot teardown.
-    if (typeof window.__onBootComplete === 'function') {
-      try { window.__onBootComplete(); } catch (e) { /* never block boot */ }
-    }
-    overlay.style.transition = 'opacity 0.4s';
-    overlay.style.opacity = '0';
-    document.body.classList.remove('booting');
-    setTimeout(function() { overlay.remove(); }, 400);
+    window.removeEventListener('resize', fitPostScreen);
     // Always unbind the keydown listener — both the click-skip and the keydown-
     // skip paths flow through here. Without this, click-skip leaves the listener
     // bound for the lifetime of the tab.
     document.removeEventListener('keydown', onSkipKey);
+    safeSetItem(sessionStorage, 'booted', '1');
+    // The Win98 startup chime. A skip gesture can unlock audio right now, so
+    // the chime is scheduled to land as the desktop paints. Without one
+    // (autoplay policy keeps AudioContext suspended), arm it for the first
+    // post-boot gesture. userActivation rules out keys that don't count as a
+    // gesture, such as Escape. Guarded so a missing sounds.js can never wedge
+    // boot teardown.
+    var sounds = window.Sounds;
+    var activation = navigator.userActivation;
+    var gesture = !!e && (!activation || activation.isActive);
+    if (sounds && gesture && typeof sounds.playStartup === 'function') {
+      sounds.playStartup((CUT_MS + PAINT_MS) / 1000);
+    } else if (sounds && typeof sounds.armStartup === 'function') {
+      sounds.armStartup();
+    }
+    // Win98 never cross-fades out of the splash: the screen drops to black
+    // while the display mode switches, then the desktop paints in stages —
+    // wallpaper first, then icons and the taskbar (.desktop-painting).
+    overlay.innerHTML = '';
+    setTimeout(function() {
+      document.body.classList.add('desktop-painting');
+      document.body.classList.remove('booting');
+      overlay.remove();
+      setTimeout(function() {
+        document.body.classList.remove('desktop-painting');
+        // Notify desktop.js that a real boot finished (desktop only; boot is
+        // skipped on phones and when 'booted' is pre-seeded). Guarded so a
+        // missing handler can never wedge boot teardown.
+        if (typeof window.__onBootComplete === 'function') {
+          try { window.__onBootComplete(); } catch (err) { /* never block boot */ }
+        }
+      }, PAINT_MS);
+    }, CUT_MS);
   }
 
   // Skip on click or keypress
-  function onSkipKey() {
-    if (document.getElementById('boot-overlay')) completeBoot();
+  function onSkipKey(e) {
+    if (document.getElementById('boot-overlay')) completeBoot(e);
   }
   overlay.addEventListener('click', completeBoot);
   document.addEventListener('keydown', onSkipKey);
