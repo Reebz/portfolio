@@ -26,6 +26,9 @@
 /* === Win98 Cursors === */
 *, *::before, *::after { cursor: url('img/cursors/arrow.png') 0 0, default; }
 a[href^="http"], a[href^="http"] *, a[href^="mailto"], a[href^="mailto"] * { cursor: url('img/cursors/pointer.png') 6 0, pointer !important; }
+/* Text fields take the I-beam, as Win98 edit controls did. */
+input:not([type="radio"]):not([type="checkbox"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+textarea { cursor: text; }
 
 /* === Reset === */
 *, *::before, *::after {
@@ -219,7 +222,7 @@ body {
 }
 
 .window .title-bar {
-  cursor: default;
+  cursor: inherit;
 }
 
 .window .window-body {
@@ -333,7 +336,7 @@ body {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  cursor: default;
+  cursor: inherit;
 }
 #tray-speaker:focus-visible {
   outline: 1px dotted var(--win98-black, #000);
@@ -425,7 +428,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
-  cursor: default;
+  cursor: inherit;
   font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
   font-size: 11px;
   height: 24px;
@@ -533,7 +536,7 @@ body {
   min-width: auto;
   min-height: auto;
   box-shadow: none;
-  cursor: default;
+  cursor: inherit;
 }
 
 .quick-launch-btn:hover {
@@ -587,6 +590,9 @@ body {
   display: block;
   width: 100%;
   height: 100%;
+  /* The canvas is drawn at CSS-pixel size; scale it up without smoothing
+     so the 1px Mystify lines stay hard-edged. */
+  image-rendering: pixelated;
 }
 
 /* === Blue Screen of Death (easter egg) === */
@@ -603,7 +609,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 32px;
-  cursor: pointer;
+  cursor: none;
 }
 #bsod-overlay .bsod-inner {
   max-width: 720px;
@@ -641,12 +647,13 @@ body {
   top: 100%;
   left: 0;
   right: 0;
-  margin: 2px 0 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   background: #fff;
+  /* A Win98 combo drop-down hangs flush under the field: a plain 1px black
+     frame, no gap, no soft shadow. */
   border: 1px solid #000;
-  box-shadow: inset -1px -1px #808080, inset 1px 1px #fff, 2px 2px 4px rgba(0, 0, 0, 0.35);
   max-height: 160px;
   overflow-y: auto;
   z-index: 10;
@@ -655,7 +662,7 @@ body {
   padding: 2px 6px;
   font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
   font-size: 11px;
-  cursor: default;
+  cursor: inherit;
   white-space: nowrap;
 }
 .run-history li:hover {
@@ -742,7 +749,7 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
 
 .notepad-menu-bar span {
   padding: 2px 6px;
-  cursor: default;
+  cursor: inherit;
 }
 
 .notepad-menu-bar span:hover {
@@ -759,6 +766,17 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
   min-height: 200px;
   white-space: pre-wrap;
   overflow: auto;
+}
+
+.notepad-textarea {
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: 12px;
+}
+
+/* WebKit gives the empty message box a sideways scrollbar while its
+   placeholder is showing. */
+#contact-message {
+  overflow-x: hidden;
 }
 
 /* === Guestbook === */
@@ -1516,7 +1534,7 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
   display: block;
   width: 100%;
   padding: 4px 24px 4px 8px;
-  cursor: default;
+  cursor: inherit;
   font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
   font-size: 11px;
   border: none;
@@ -1579,10 +1597,14 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
   flex-shrink: 0;
 }
 
-/* === Firefox Scrollbar Compatibility === */
-* {
-  scrollbar-color: #dfdfdf silver;
-  scrollbar-width: auto;
+/* === Firefox Scrollbar Compatibility ===
+   Firefox only: Chromium ignores 98.css's ::-webkit-scrollbar bevels as soon
+   as any standard scrollbar-color is set, and falls back to thin modern bars. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-color: #dfdfdf silver;
+    scrollbar-width: auto;
+  }
 }
 
 /* === Focus Indicators (Win98 dotted outline) === */
@@ -1656,7 +1678,7 @@ a:focus-visible,
   padding: 4px 12px;
   font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
   font-size: 11px;
-  cursor: default;
+  cursor: inherit;
   background: var(--win98-silver);
   border: 1px solid var(--win98-grey);
   border-bottom: none;
@@ -1773,4 +1795,478 @@ a:focus-visible,
   justify-content: flex-end;
   gap: 4px;
   margin-top: 8px;
+}
+
+/* === Desktop + tablet fidelity pass ===
+   Win98 corrections for every screen except phones. The negated
+   touch-detection contract keeps phone rendering (and the iphone-14
+   screenshot baselines) exactly as it was. */
+@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  /* The desktop is a fixed screen, never a scroller. With overflow:hidden it
+     still scrolled programmatically: the #window-<id> hash and focus() both
+     scroll a tall window into view, sliding every icon and window up under
+     a wallpaper that stays put. clip removes the scroll container. */
+  #desktop {
+    overflow: clip;
+  }
+
+  /* Dragging a title bar, the rubber band or an icon never selects text
+     (WebKit still needs the prefixed property). */
+  .title-bar,
+  #taskbar,
+  #start-menu,
+  .context-menu,
+  #icon-grid,
+  .notepad-menu-bar,
+  .status-bar {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Win98 highlights selected text in navy, not the browser's pale blue. */
+  ::selection {
+    background: var(--win98-navy);
+    color: var(--win98-white);
+  }
+
+  /* Maximized windows run edge to edge: the floating-window caps
+     (100% - 8px) otherwise left a strip of wallpaper right and bottom. */
+  .window[data-state="maximized"] {
+    max-width: none !important;
+    max-height: none !important;
+  }
+
+  /* Win98's tray is one sunken well with no dividers between items. */
+  #system-tray > * + * {
+    padding-left: 0;
+    border-left: none;
+    box-shadow: none;
+  }
+
+  /* Dialog faces are 3D grey, not window-white. */
+  #window-visitor-counter .window-body,
+  #window-clock .window-body,
+  .construction-window .window-body {
+    background: var(--win98-silver);
+  }
+
+  /* Submenus that would run off the right edge open to the left instead. */
+  .has-submenu.submenu-flip > .start-submenu {
+    left: auto;
+    right: 100%;
+  }
+
+  /* Only one highlight per menu level: a lit cascade parent yields to a
+     hovered sibling. */
+  #start-menu ul:has(> li > .start-menu-item:hover) > li.submenu-open:not(:hover) > .start-menu-item {
+    background: none;
+    color: var(--win98-black);
+  }
+  #start-menu ul:has(> li > .start-menu-item:hover) > li.submenu-open:not(:hover) > .start-menu-item .submenu-arrow {
+    color: var(--win98-black);
+  }
+  .context-menu:focus {
+    outline: none;
+  }
+
+  /* Caption text sits left, right after the icon, and truncates with an
+     ellipsis. 98.css centres it via justify-content:space-between once the
+     icon becomes a third flex child. */
+  .title-bar-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 6px;
+  }
+
+  /* Windows Standard scheme: inactive captions fade #808080 to #c0c0c0 and
+     their text dims to #c0c0c0. Theme rules above still win via specificity. */
+  .title-bar.inactive {
+    background: linear-gradient(90deg, #808080, #c0c0c0);
+  }
+  .title-bar.inactive .title-bar-text {
+    color: #c0c0c0;
+  }
+
+  /* Menu items are flat rows that only highlight; 98.css gives every
+     <button> a raised bevel, a pressed state, a focus rect and a shadowed
+     label, none of which a Win98 menu draws. */
+  #start-menu .start-menu-item,
+  .context-menu .context-menu-item {
+    box-shadow: none;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 0;
+    text-shadow: none;
+  }
+  #start-menu .start-menu-item:hover,
+  #start-menu .start-menu-item:active,
+  #start-menu .start-menu-item:focus,
+  .context-menu .context-menu-item:hover,
+  .context-menu .context-menu-item:active,
+  .context-menu .context-menu-item:focus {
+    box-shadow: none;
+    text-shadow: none;
+    outline: none;
+  }
+  /* Items start flush under the menu's top edge; the list's default 1em
+     block margins left a dead band above Programs and below Shut Down. */
+  #start-menu .start-menu-items {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  /* Keep the cascade's parent row lit while its submenu is open, the way a
+     Win98 menu marks the path you came from. */
+  #start-menu .has-submenu.submenu-open > .start-menu-item {
+    background: var(--win98-navy);
+    color: var(--win98-white);
+  }
+
+  /* Context-menu text starts past the check-mark column Win98 reserves on
+     the left; separators are an etched line in an 8px band. */
+  .context-menu .context-menu-item {
+    padding: 3px 24px 3px 18px;
+  }
+  .context-menu .context-menu-separator {
+    margin: 3px 1px 4px;
+  }
+
+  /* Start reads as pushed in while its menu is open. */
+  #start-button[aria-expanded="true"] {
+    box-shadow: inset -1px -1px var(--win98-white),
+                inset 1px 1px var(--win98-dark),
+                inset -2px -2px var(--win98-light),
+                inset 2px 2px var(--win98-grey);
+    padding: 2px 4px 0 6px;
+  }
+
+  /* Task buttons carry the window's 16px icon ahead of an ellipsised
+     title. The label needs its own box: WebKit won't draw text-overflow
+     on a <button>'s anonymous content. */
+  /* Equal-width buttons that shrink toward icon-only as tasks pile up, so a
+     narrow iPad taskbar never pushes the newest task out of view. */
+  .taskbar-window-btn {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex: 1 1 0;
+    min-width: 26px;
+  }
+  /* Pressed (active task) content sits 1px down and right. */
+  .taskbar-window-btn[aria-pressed="true"] {
+    padding: 2px 5px 0 7px;
+  }
+  .taskbar-window-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    image-rendering: pixelated;
+  }
+  /* Solid text colour: WebKit drops 98.css's text-shadow-drawn label from
+     the ellipsis glyph. */
+  .taskbar-window-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #222;
+    text-shadow: none;
+  }
+
+  /* Bitmap-font surfaces outside 98.css's own list render unsmoothed too. */
+  .desktop-icon-label,
+  #system-tray,
+  #win98-tooltip,
+  .start-menu-sidebar {
+    -webkit-font-smoothing: none;
+  }
+
+  /* A selected icon gets a 50% navy dither over its own pixels only, and
+     the dotted focus rect hugs the label (drawn XOR, so it reads yellow on
+     the navy highlight). --icon-src is set per icon in generateProjects. */
+  .desktop-icon[data-selected="true"],
+  .desktop-icon:focus-visible {
+    outline: none;
+  }
+  .desktop-icon[data-selected="true"]::after {
+    background: repeating-conic-gradient(var(--win98-navy) 0% 25%, transparent 0% 50%) 0 0 / 2px 2px;
+    opacity: 1;
+    -webkit-mask: var(--icon-src) center / contain no-repeat;
+    mask: var(--icon-src) center / contain no-repeat;
+  }
+  .desktop-icon:focus-visible .desktop-icon-label {
+    outline: 1px dotted var(--win98-white);
+    outline-offset: -1px;
+  }
+  .desktop-icon[data-selected="true"]:focus .desktop-icon-label {
+    outline: 1px dotted #ffff7f;
+    outline-offset: -1px;
+  }
+
+  /* The rubber band is a bare dotted focus rect; the translucent fill
+     arrived with Windows 2000. */
+  #selection-rect {
+    border-color: var(--win98-black);
+    background: none;
+  }
+
+  /* Notepad: the edit control fills the client area inside a sunken edge
+     and always shows its vertical scrollbar. Win98 Notepad had no status
+     bar, and its menu bar hot-tracks with a thin raised border rather than
+     a highlight. */
+  .window:has(> .notepad-menu-bar) > .window-body {
+    margin: 0 0 1px;
+    padding: 2px;
+    background: var(--win98-white);
+    overflow-y: scroll;
+    box-shadow: inset -1px -1px var(--win98-white),
+                inset 1px 1px var(--win98-grey),
+                inset -2px -2px var(--win98-light),
+                inset 2px 2px var(--win98-dark);
+  }
+  .window:has(> .notepad-menu-bar) > .window-body > .notepad-content {
+    min-height: 0;
+    overflow: visible;
+  }
+  /* Notepad's default face was the Fixedsys bitmap font; the bundled VGA
+     font is the closest chunky 8px-wide match (Courier New, the Mac
+     fallback for Lucida Console, reads thin and typewritten). */
+  .notepad-content,
+  .notepad-textarea {
+    font-family: "Perfect DOS VGA 437", "Lucida Console", monospace;
+    font-size: 16px;
+    line-height: 16px;
+    -webkit-font-smoothing: none;
+  }
+  .notepad-textarea {
+    padding: 2px 4px;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+  }
+  .window:has(> .notepad-menu-bar) > .status-bar {
+    display: none;
+  }
+  .notepad-menu-bar {
+    padding: 1px 2px 2px;
+  }
+  .notepad-menu-bar span {
+    display: inline-block;
+    padding: 1px 6px;
+  }
+  .notepad-menu-bar span::first-letter {
+    text-decoration: underline;
+  }
+  .notepad-menu-bar span:hover {
+    background: none;
+    color: inherit;
+    box-shadow: inset -1px -1px var(--win98-grey), inset 1px 1px var(--win98-white);
+  }
+
+  /* Property sheet tabs, after 98.css's tablist: silver beveled tabs with
+     rounded top corners on a raised silver page. The selected tab stands
+     2px taller and overlaps the page edge so the two read as one piece. */
+  .sysprop-tabs {
+    margin: 0 0 -2px;
+    padding-left: 3px;
+    position: relative;
+  }
+  .sysprop-tabs [role="tab"] {
+    top: 0;
+    margin-right: 0;
+    padding: 3px 8px 4px;
+    border: none;
+    border-radius: 3px 3px 0 0;
+    background: var(--win98-silver);
+    box-shadow: inset -1px 0 var(--win98-dark),
+                inset 1px 1px var(--win98-light),
+                inset -2px 0 var(--win98-grey),
+                inset 2px 2px var(--win98-white);
+    z-index: 1;
+  }
+  .sysprop-tabs [role="tab"][aria-selected="true"] {
+    top: 0;
+    margin: -2px -2px 0 -3px;
+    padding: 4px 10px 6px 11px;
+    border-bottom: none;
+    background: var(--win98-silver);
+    font-weight: normal;
+    z-index: 8;
+  }
+  .sysprop-panel-area {
+    position: relative;
+    z-index: 2;
+    border: none;
+    background: var(--win98-silver);
+    box-shadow: inset -1px -1px var(--win98-dark),
+                inset 1px 1px var(--win98-white),
+                inset -2px -2px var(--win98-grey),
+                inset 2px 2px var(--win98-light);
+  }
+}
+
+/* Phones keep their text-only task chips. */
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  .taskbar-window-icon { display: none; }
+}
+
+/* === Tablets (touch, desktop layout) ===
+   Title bars, icons and the bare desktop are drag surfaces, so Safari must
+   not claim those touches for scrolling or zooming; buttons opt out of the
+   double-tap zoom delay. No grey tap flash or long-press callout either,
+   since long-press opens the context menu. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
+  #desktop,
+  .title-bar,
+  .desktop-icon {
+    touch-action: none;
+  }
+  #desktop > .window {
+    touch-action: auto;
+  }
+  #desktop > .window .title-bar {
+    touch-action: none;
+  }
+  button,
+  .start-menu-item,
+  .context-menu-item {
+    touch-action: manipulation;
+  }
+  * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+  /* The classic three-ridge size grip in the bottom-right corner, with a
+     fingertip-sized hit area around it. */
+  .window[data-state="open"] > .size-grip {
+    display: block;
+  }
+}
+
+.size-grip {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
+  z-index: 3;
+  touch-action: none;
+  background: repeating-linear-gradient(135deg,
+      transparent 0 2px,
+      var(--win98-white) 2px 3px,
+      var(--win98-grey) 3px 5px,
+      transparent 5px 6px)
+    right 3px bottom 3px / 12px 12px no-repeat;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+/* Win98 window animation: the caption bar that flies between a window and
+   its taskbar button (window-animation.js flyCaption). Colours are copied
+   from the window's own title bar when it launches. */
+.caption-flight {
+  position: fixed;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  box-sizing: border-box;
+  padding: 0 2px 0 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  background: linear-gradient(90deg, navy, #1084d0);
+  color: #fff;
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  -webkit-font-smoothing: none;
+}
+
+.caption-flight img {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  image-rendering: pixelated;
+}
+
+/* Shut Down: Win98 dims the whole screen with a 50% black dither behind the
+   dialog, which also stops clicks reaching anything else. Drawn on <html>,
+   outside the zoomed body, so the checkerboard lands on whole pixels. */
+html.shutdown-dim::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9550;
+  background: repeating-conic-gradient(#000 0% 25%, transparent 0% 50%) 0 0 / 2px 2px;
+}
+
+html.shutdown-dim #window-shutdown {
+  z-index: 9551 !important;
+}
+
+.shutdown-icon { display: none; }
+
+@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  .shutdown-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .shutdown-icon {
+    display: block;
+    flex: none;
+    image-rendering: pixelated;
+  }
+}
+
+/* Menu access keys. Win98 always underlined them (hiding them until Alt
+   came with Windows 2000). 98.css draws <u> as a 0.5px dark border that
+   vanishes on the navy highlight; a text underline follows the text colour.
+   Phones keep plain labels. */
+@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  #start-menu u,
+  .context-menu u {
+    border-bottom: 0;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 1px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  #start-menu u,
+  .context-menu u {
+    border-bottom: 0;
+    text-decoration: none;
+  }
+}
+
+/* A greyed-out menu item (Win98's embossed grey text) takes no highlight. */
+.context-menu .context-menu-item:disabled,
+.context-menu .context-menu-item:disabled:hover {
+  background: none;
+  color: #808080;
+  text-shadow: 1px 1px 0 #fff;
+}
+
+/* Desktop icon labels: Win98 drew them as white text on a solid box in the
+   desktop colour (the soft drop shadow came with Windows 2000). The box
+   follows the Display Properties scheme; a selected label turns navy (the
+   global [data-selected] rule). Phones keep their shadowed labels. */
+@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  body { --desktop-color: var(--win98-teal); }
+  body[data-theme="rose"] { --desktop-color: #9c5c78; }
+  body[data-theme="eggplant"] { --desktop-color: #4e4066; }
+  body[data-theme="high-contrast"] { --desktop-color: #000; }
+  body[data-theme="hotdog"] { --desktop-color: #c00000; }
+
+  .desktop-icon-label {
+    background: var(--desktop-color);
+    text-shadow: none;
+  }
 }

@@ -1,6 +1,33 @@
+/* Win98 Minesweeper. Sizes follow the original at 1x (16px cells, 41x25
+   LED counters, 26px face button); the page zoom scales them like the rest
+   of the desktop. Touch screens get 24px cells (game.js shrinks them when a
+   bigger board would not fit). Sprites are pixel art drawn as SVG. */
+#ms-app {
+  --ms-cell: 16px;
+  --ms-face-smile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='17' height='17' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M6 0h5v1h-5zM4 1h2v1h-2zM11 1h2v1h-2zM3 2h1v1h-1zM13 2h1v1h-1zM2 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM15 4h1v1h-1zM1 5h1v1h-1zM5 5h2v1h-2zM10 5h2v1h-2zM15 5h1v1h-1zM0 6h1v1h-1zM5 6h2v1h-2zM10 6h2v1h-2zM16 6h1v1h-1zM0 7h1v1h-1zM16 7h1v1h-1zM0 8h1v1h-1zM16 8h1v1h-1zM0 9h1v1h-1zM16 9h1v1h-1zM0 10h1v1h-1zM5 10h1v1h-1zM11 10h1v1h-1zM16 10h1v1h-1zM1 11h1v1h-1zM6 11h1v1h-1zM10 11h1v1h-1zM15 11h1v1h-1zM1 12h1v1h-1zM7 12h3v1h-3zM15 12h1v1h-1zM2 13h1v1h-1zM14 13h1v1h-1zM3 14h1v1h-1zM13 14h1v1h-1zM4 15h2v1h-2zM11 15h2v1h-2zM6 16h5v1h-5z'/%3E%3Cpath fill='%23ff0' d='M6 1h5v1h-5zM4 2h9v1h-9zM3 3h11v1h-11zM2 4h13v1h-13zM2 5h3v1h-3zM7 5h3v1h-3zM12 5h3v1h-3zM1 6h4v1h-4zM7 6h3v1h-3zM12 6h4v1h-4zM1 7h15v1h-15zM1 8h15v1h-15zM1 9h15v1h-15zM1 10h4v1h-4zM6 10h5v1h-5zM12 10h4v1h-4zM2 11h4v1h-4zM7 11h3v1h-3zM11 11h4v1h-4zM2 12h5v1h-5zM10 12h5v1h-5zM3 13h11v1h-11zM4 14h9v1h-9zM6 15h5v1h-5z'/%3E%3C/svg%3E");
+  --ms-face-oh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='17' height='17' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M6 0h5v1h-5zM4 1h2v1h-2zM11 1h2v1h-2zM3 2h1v1h-1zM13 2h1v1h-1zM2 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM15 4h1v1h-1zM1 5h1v1h-1zM5 5h2v1h-2zM10 5h2v1h-2zM15 5h1v1h-1zM0 6h1v1h-1zM5 6h2v1h-2zM10 6h2v1h-2zM16 6h1v1h-1zM0 7h1v1h-1zM16 7h1v1h-1zM0 8h1v1h-1zM16 8h1v1h-1zM0 9h1v1h-1zM16 9h1v1h-1zM0 10h1v1h-1zM7 10h3v1h-3zM16 10h1v1h-1zM1 11h1v1h-1zM6 11h1v1h-1zM10 11h1v1h-1zM15 11h1v1h-1zM1 12h1v1h-1zM6 12h1v1h-1zM10 12h1v1h-1zM15 12h1v1h-1zM2 13h1v1h-1zM7 13h3v1h-3zM14 13h1v1h-1zM3 14h1v1h-1zM13 14h1v1h-1zM4 15h2v1h-2zM11 15h2v1h-2zM6 16h5v1h-5z'/%3E%3Cpath fill='%23ff0' d='M6 1h5v1h-5zM4 2h9v1h-9zM3 3h11v1h-11zM2 4h13v1h-13zM2 5h3v1h-3zM7 5h3v1h-3zM12 5h3v1h-3zM1 6h4v1h-4zM7 6h3v1h-3zM12 6h4v1h-4zM1 7h15v1h-15zM1 8h15v1h-15zM1 9h15v1h-15zM1 10h6v1h-6zM10 10h6v1h-6zM2 11h4v1h-4zM7 11h3v1h-3zM11 11h4v1h-4zM2 12h4v1h-4zM7 12h3v1h-3zM11 12h4v1h-4zM3 13h4v1h-4zM10 13h4v1h-4zM4 14h9v1h-9zM6 15h5v1h-5z'/%3E%3C/svg%3E");
+  --ms-face-cool: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='17' height='17' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M6 0h5v1h-5zM4 1h2v1h-2zM11 1h2v1h-2zM3 2h1v1h-1zM13 2h1v1h-1zM2 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM15 4h1v1h-1zM1 5h1v1h-1zM3 5h11v1h-11zM15 5h1v1h-1zM0 6h1v1h-1zM4 6h4v1h-4zM9 6h4v1h-4zM16 6h1v1h-1zM0 7h1v1h-1zM5 7h2v1h-2zM10 7h2v1h-2zM16 7h1v1h-1zM0 8h1v1h-1zM16 8h1v1h-1zM0 9h1v1h-1zM16 9h1v1h-1zM0 10h1v1h-1zM5 10h1v1h-1zM11 10h1v1h-1zM16 10h1v1h-1zM1 11h1v1h-1zM6 11h1v1h-1zM10 11h1v1h-1zM15 11h1v1h-1zM1 12h1v1h-1zM7 12h3v1h-3zM15 12h1v1h-1zM2 13h1v1h-1zM14 13h1v1h-1zM3 14h1v1h-1zM13 14h1v1h-1zM4 15h2v1h-2zM11 15h2v1h-2zM6 16h5v1h-5z'/%3E%3Cpath fill='%23ff0' d='M6 1h5v1h-5zM4 2h9v1h-9zM3 3h11v1h-11zM2 4h13v1h-13zM2 5h1v1h-1zM14 5h1v1h-1zM1 6h3v1h-3zM8 6h1v1h-1zM13 6h3v1h-3zM1 7h4v1h-4zM7 7h3v1h-3zM12 7h4v1h-4zM1 8h15v1h-15zM1 9h15v1h-15zM1 10h4v1h-4zM6 10h5v1h-5zM12 10h4v1h-4zM2 11h4v1h-4zM7 11h3v1h-3zM11 11h4v1h-4zM2 12h5v1h-5zM10 12h5v1h-5zM3 13h11v1h-11zM4 14h9v1h-9zM6 15h5v1h-5z'/%3E%3C/svg%3E");
+  --ms-face-dead: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='17' height='17' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M6 0h5v1h-5zM4 1h2v1h-2zM11 1h2v1h-2zM3 2h1v1h-1zM13 2h1v1h-1zM2 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM15 4h1v1h-1zM1 5h1v1h-1zM5 5h1v1h-1zM7 5h1v1h-1zM9 5h1v1h-1zM11 5h1v1h-1zM15 5h1v1h-1zM0 6h1v1h-1zM6 6h1v1h-1zM10 6h1v1h-1zM16 6h1v1h-1zM0 7h1v1h-1zM5 7h1v1h-1zM7 7h1v1h-1zM9 7h1v1h-1zM11 7h1v1h-1zM16 7h1v1h-1zM0 8h1v1h-1zM16 8h1v1h-1zM0 9h1v1h-1zM16 9h1v1h-1zM0 10h1v1h-1zM7 10h3v1h-3zM16 10h1v1h-1zM1 11h1v1h-1zM6 11h1v1h-1zM10 11h1v1h-1zM15 11h1v1h-1zM1 12h1v1h-1zM5 12h1v1h-1zM11 12h1v1h-1zM15 12h1v1h-1zM2 13h1v1h-1zM14 13h1v1h-1zM3 14h1v1h-1zM13 14h1v1h-1zM4 15h2v1h-2zM11 15h2v1h-2zM6 16h5v1h-5z'/%3E%3Cpath fill='%23ff0' d='M6 1h5v1h-5zM4 2h9v1h-9zM3 3h11v1h-11zM2 4h13v1h-13zM2 5h3v1h-3zM6 5h1v1h-1zM8 5h1v1h-1zM10 5h1v1h-1zM12 5h3v1h-3zM1 6h5v1h-5zM7 6h3v1h-3zM11 6h5v1h-5zM1 7h4v1h-4zM6 7h1v1h-1zM8 7h1v1h-1zM10 7h1v1h-1zM12 7h4v1h-4zM1 8h15v1h-15zM1 9h15v1h-15zM1 10h6v1h-6zM10 10h6v1h-6zM2 11h4v1h-4zM7 11h3v1h-3zM11 11h4v1h-4zM2 12h3v1h-3zM6 12h5v1h-5zM12 12h3v1h-3zM3 13h11v1h-11zM4 14h9v1h-9zM6 15h5v1h-5z'/%3E%3C/svg%3E");
+  --ms-mine: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M6 0h1v1h-1zM6 1h1v1h-1zM2 2h1v1h-1zM4 2h5v1h-5zM10 2h1v1h-1zM3 3h7v1h-7zM2 4h2v1h-2zM6 4h5v1h-5zM2 5h2v1h-2zM6 5h5v1h-5zM0 6h13v1h-13zM2 7h9v1h-9zM2 8h9v1h-9zM3 9h7v1h-7zM2 10h1v1h-1zM4 10h5v1h-5zM10 10h1v1h-1zM6 11h1v1h-1zM6 12h1v1h-1z'/%3E%3Cpath fill='%23fff' d='M4 4h2v1h-2zM4 5h2v1h-2z'/%3E%3C/svg%3E");
+  --ms-mine-wrong: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M6 0h1v1h-1zM6 1h1v1h-1zM4 2h5v1h-5zM5 3h3v1h-3zM2 4h2v1h-2zM6 4h1v1h-1zM9 4h2v1h-2zM2 5h2v1h-2zM8 5h3v1h-3zM0 6h5v1h-5zM8 6h5v1h-5zM2 7h2v1h-2zM6 7h1v1h-1zM9 7h2v1h-2zM2 8h1v1h-1zM5 8h3v1h-3zM10 8h1v1h-1zM4 9h5v1h-5zM4 10h5v1h-5zM6 11h1v1h-1zM6 12h1v1h-1z'/%3E%3Cpath fill='%23f00' d='M1 1h2v1h-2zM10 1h2v1h-2zM2 2h2v1h-2zM9 2h2v1h-2zM3 3h2v1h-2zM8 3h2v1h-2zM4 4h2v1h-2zM7 4h2v1h-2zM5 5h3v1h-3zM5 6h3v1h-3zM4 7h2v1h-2zM7 7h2v1h-2zM3 8h2v1h-2zM8 8h2v1h-2zM2 9h2v1h-2zM9 9h2v1h-2zM1 10h2v1h-2zM10 10h2v1h-2zM1 11h1v1h-1zM11 11h1v1h-1z'/%3E%3Cpath fill='%23fff' d='M4 5h1v1h-1z'/%3E%3C/svg%3E");
+  --ms-flag: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' shape-rendering='crispEdges'%3E%3Cpath fill='%23f00' d='M3 0h2v1h-2zM1 1h4v1h-4zM0 2h5v1h-5zM1 3h4v1h-4zM3 4h2v1h-2z'/%3E%3Cpath fill='%23000' d='M5 0h1v1h-1zM5 1h1v1h-1zM5 2h1v1h-1zM5 3h1v1h-1zM5 4h1v1h-1zM5 5h1v1h-1zM5 6h1v1h-1zM3 7h4v1h-4zM1 8h8v1h-8zM1 9h8v1h-8z'/%3E%3C/svg%3E");
+  display: inline-flex;
+  flex-direction: column;
+  padding: 6px;
+  background: #c0c0c0;
+  border: 3px solid;
+  border-color: #fff #808080 #808080 #fff;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  #ms-app { --ms-cell: 24px; }
+}
+
 #ms-app button {
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: inherit;
   min-width: auto;
   min-height: auto;
   padding: 0;
@@ -9,74 +36,95 @@
   color: #000;
 }
 
-#ms-app {
-  font-family: "MS Sans Serif", Arial, sans-serif;
-  font-size: 12px;
-  user-select: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 #ms-app #header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-  background: #c0c0c0;
-  border: 2px inset #fff;
-  padding: 4px 8px;
-  width: fit-content;
+  justify-content: space-between;
+  height: 37px;
+  box-sizing: border-box;
+  padding: 0 5px;
+  margin-bottom: 6px;
+  border: 2px solid;
+  border-color: #808080 #fff #fff #808080;
 }
 
 #ms-app .counter {
+  width: 41px;
+  height: 25px;
+  box-sizing: border-box;
+  overflow: hidden;
   background: #000;
-  color: #f00;
-  font-family: monospace;
-  font-size: 18px;
-  padding: 2px 6px;
-  min-width: 40px;
-  text-align: right;
-  border: 1px inset #808080;
+  border: 1px solid;
+  border-color: #808080 #fff #fff #808080;
 }
+
+#ms-app .counter svg { display: block; }
 
 #ms-app #face {
-  font-size: 18px;
-  cursor: pointer;
-  border: 2px outset #fff;
-  background: #c0c0c0;
-  width: 28px;
-  height: 28px;
-  line-height: 28px;
-  text-align: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #808080;
+  background: #c0c0c0 var(--ms-face-smile) center / 17px 17px no-repeat;
+  box-shadow: inset 2px 2px #fff, inset -2px -2px #808080;
 }
 
-#ms-app #face:active { border-style: inset; }
+#ms-app #face:not(:disabled):active {
+  box-shadow: inset 1px 1px #808080;
+  background-position: calc(50% + 1px) calc(50% + 1px);
+}
+
+#ms-app #face:focus { outline: none; }
+#ms-app #face:focus-visible { outline: 1px dotted #000; outline-offset: -5px; }
+#ms-app #face[data-face="oh"] { background-image: var(--ms-face-oh); }
+#ms-app #face[data-face="cool"] { background-image: var(--ms-face-cool); }
+#ms-app #face[data-face="dead"] { background-image: var(--ms-face-dead); }
 
 #ms-app #grid {
+  --ms-cols: 9;
+  --ms-rows: 9;
   display: grid;
-  grid-template-columns: repeat(9, 24px);
-  border: 3px inset #808080;
+  grid-template-columns: repeat(var(--ms-cols), var(--ms-cell));
+  /* Holds the board's size before game.js fills it, so the window opens at
+     its final size. */
+  min-width: calc(var(--ms-cols) * var(--ms-cell));
+  min-height: calc(var(--ms-rows) * var(--ms-cell));
+  border: 3px solid;
+  border-color: #808080 #fff #fff #808080;
+  touch-action: none;
 }
 
 #ms-app .cell {
-  width: 24px;
-  height: 24px;
-  border: 2px outset #fff;
-  background: #c0c0c0;
-  text-align: center;
-  line-height: 20px;
-  font-weight: bold;
-  font-size: 12px;
-  cursor: pointer;
+  width: var(--ms-cell);
+  height: var(--ms-cell);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid;
+  border-color: #fff #808080 #808080 #fff;
+  background: #c0c0c0 no-repeat center;
+  color: #000;
+  font: 700 calc(var(--ms-cell) * 0.6875)/1 "Pixelated MS Sans Serif", Arial, sans-serif;
+  -webkit-font-smoothing: none;
+  cursor: inherit;
 }
 
-#ms-app .cell.revealed {
-  border: 1px solid #808080;
-  cursor: default;
+/* Opened cells, and the cell under a held button, lie flat behind a 1px
+   grid line. */
+#ms-app .cell.revealed,
+#ms-app .cell.pressed {
+  border-width: 1px 0 0 1px;
+  border-color: #808080;
 }
 
-#ms-app .cell.mine-hit { background: #f00; }
+/* The emoji stay in the DOM as text for screen readers; the sprite draws. */
+#ms-app .cell.flagged,
+#ms-app .cell.mine,
+#ms-app .cell.mine-wrong { font-size: 0; }
+#ms-app .cell.flagged { background-image: var(--ms-flag); background-size: calc(var(--ms-cell) * 0.625); }
+#ms-app .cell.mine { background-image: var(--ms-mine); background-size: calc(var(--ms-cell) * 0.8125); }
+#ms-app .cell.mine-wrong { background-image: var(--ms-mine-wrong); background-size: calc(var(--ms-cell) * 0.8125); }
+#ms-app .cell.mine-hit { background-color: #f00; }
 
 #ms-app .c1 { color: #0000ff; }
 #ms-app .c2 { color: #008000; }
@@ -87,8 +135,102 @@
 #ms-app .c7 { color: #000; }
 #ms-app .c8 { color: #808080; }
 
-#ms-app #msg {
-  margin-top: 6px;
-  font-weight: bold;
-  height: 16px;
+/* Text for screen readers only (counter values, win/lose announcement). */
+#ms-app .ms-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Game menu */
+.ms-menu-bar {
+  position: relative;
+  display: flex;
+  padding: 1px 0 2px;
+  background: #c0c0c0;
+}
+
+.ms-menu-bar button {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: #000;
+  text-shadow: none;
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  font-size: 11px;
+  cursor: inherit;
+}
+
+.ms-menu-bar button:focus { outline: none; }
+.ms-menu-bar u { border: 0; text-decoration: underline; }
+
+.ms-menu-title { padding: 2px 6px 3px; }
+.ms-menu-title:hover,
+.ms-menu-title:focus-visible { box-shadow: inset -1px -1px #808080, inset 1px 1px #fff; }
+.ms-menu-title[aria-expanded="true"] { box-shadow: inset 1px 1px #808080, inset -1px -1px #fff; }
+
+.ms-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  min-width: 150px;
+  padding: 2px;
+  background: #c0c0c0;
+  box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #dfdfdf, inset -2px -2px #808080, inset 2px 2px #fff;
+}
+
+.ms-dropdown[hidden] { display: none; }
+
+.ms-dropdown button {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 3px 20px 3px 18px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ms-dropdown button:not(:disabled):hover,
+.ms-dropdown button:not(:disabled):focus {
+  background: #000080;
+  color: #fff;
+}
+
+.ms-dropdown button:disabled {
+  color: #808080;
+  text-shadow: 1px 1px 0 #fff;
+}
+
+/* Check mark beside the current level */
+.ms-dropdown button[aria-checked="true"]::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -4px;
+  background: url("data:image/svg+xml,%3Csvg width='7' height='7' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7 0H6v1H5v1H4v1H3v1H2V3H1V2H0v3h1v1h1v1h1V6h1V5h1V4h1V3h1z'/%3E%3C/svg%3E");
+}
+
+.ms-dropdown button[aria-checked="true"]:hover::before,
+.ms-dropdown button[aria-checked="true"]:focus::before {
+  background-image: url("data:image/svg+xml,%3Csvg width='7' height='7' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%23fff' d='M7 0H6v1H5v1H4v1H3v1H2V3H1V2H0v3h1v1h1v1h1V6h1V5h1V4h1V3h1z'/%3E%3C/svg%3E");
+}
+
+.ms-dropdown .ms-sep {
+  height: 1px;
+  margin: 3px 1px 4px;
+  background: #808080;
+  box-shadow: 0 1px 0 #fff;
 }
