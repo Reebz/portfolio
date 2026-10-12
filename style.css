@@ -873,6 +873,11 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
   overflow-wrap: anywhere;
 }
 
+/* A published message keeps the line breaks its signer typed. */
+.guestbook-published .guestbook-message {
+  white-space: pre-line;
+}
+
 /* The signing form. Its rules stay under #guestbook-form, because 98.css
    styles bare inputs, textareas and buttons everywhere else. */
 #guestbook-form {

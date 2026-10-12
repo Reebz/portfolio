@@ -2815,6 +2815,77 @@
     }
   };
 
+  // --- Published guestbook entries ---
+  // Mitch publishes approved entries in guestbook.json, a list of
+  // { name, date, message }. The first Guestbook open loads the file and
+  // shows its valid entries above the 1999 ones, newest first, as plain
+  // text. A failed load leaves only the 1999 entries, logs nothing (the
+  // console-error gate opens the Guestbook), and the next open tries again.
+  // A successful load is kept, so the entries go in once per page load.
+  var guestbookLoad = null;
+  var GUESTBOOK_DATE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+
+  function loadGuestbookEntries() {
+    if (guestbookLoad || typeof fetch !== 'function') return;
+    // no-cache revalidates against GitHub Pages' 10-minute cache, so a
+    // newly published entry shows on the next page load.
+    guestbookLoad = fetch('guestbook.json', { cache: 'no-cache' }).then(function(response) {
+      if (!response.ok) throw new Error('guestbook.json answered ' + response.status);
+      return response.json();
+    }).then(function(list) {
+      showGuestbookEntries(validGuestbookEntries(list));
+    }).catch(function() {
+      guestbookLoad = null;
+    });
+  }
+
+  // Keeps each entry whose three fields are strings within the signing
+  // form's limits, with a MM/DD/YYYY date, sorted newest first. Dates are
+  // compared as year, month and day, never through Date, and entries with
+  // the same date keep their order in the file.
+  function validGuestbookEntries(list) {
+    if (!Array.isArray(list)) return [];
+    var kept = [];
+    list.forEach(function(entry, index) {
+      if (!entry || typeof entry.name !== 'string' || typeof entry.date !== 'string' ||
+          typeof entry.message !== 'string') return;
+      var date = GUESTBOOK_DATE.exec(entry.date);
+      if (!date || entry.name.length > 30 || entry.message.length > 140) return;
+      kept.push({ entry: entry, index: index, day: date[3] + date[1] + date[2] });
+    });
+    kept.sort(function(a, b) {
+      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
+      return a.index - b.index;
+    });
+    return kept.map(function(k) { return k.entry; });
+  }
+
+  // Builds each entry like the 1999 ones, with textContent so HTML or a web
+  // address in an entry shows as typed characters.
+  function showGuestbookEntries(entries) {
+    var first1999 = document.querySelector('#window-guestbook .guestbook-entry:not(.guestbook-published)');
+    if (!first1999) return;
+    entries.forEach(function(entry) {
+      var item = document.createElement('div');
+      item.className = 'guestbook-entry guestbook-published';
+      var name = document.createElement('span');
+      name.className = 'guestbook-name';
+      name.textContent = entry.name;
+      var date = document.createElement('span');
+      date.className = 'guestbook-date';
+      date.textContent = entry.date;
+      var message = document.createElement('div');
+      message.className = 'guestbook-message';
+      message.textContent = entry.message;
+      item.appendChild(name);
+      // The 1999 markup has a space between name and date.
+      item.appendChild(document.createTextNode(' '));
+      item.appendChild(date);
+      item.appendChild(message);
+      first1999.parentNode.insertBefore(item, first1999);
+    });
+  }
+
   // --- Form sends ---
   // Contact and the Guestbook both post through sendForm. Its deadline comes
   // from setTimeout and an AbortController, because Safari before 16 lacks
@@ -4500,6 +4571,7 @@
     // restore. Hash deep-link to #window-clock needs startAnalogueClock to
     // fire from openWindow (the tray click path called it directly before).
     windowOpenHooks['window-clock'] = startAnalogueClock;
+    windowOpenHooks['window-guestbook'] = loadGuestbookEntries;
     windowMinimizeHooks['window-clock'] = stopAnalogueClock;
     windowRestoreHooks['window-clock'] = startAnalogueClock;
 
