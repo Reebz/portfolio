@@ -5,6 +5,10 @@
 // pointer-leave. The tray clock shows the full weekday date sourced from
 // the same en-AU formatter the Date/Time window uses.
 //
+// Project desktop icons show their description the same way, and system
+// icons show none. A press or drag keeps the icon's tooltip away until the
+// pointer leaves it, and icons show none while a context menu is open.
+//
 // Non-mobile-prefixed filename, so this runs under the desktop project only
 // (see playwright.config.js testMatch). The hover:none guard for phones is
 // covered by mobile-tooltips.spec.js.
@@ -80,5 +84,103 @@ test.describe('Win98 tooltips (desktop hover)', () => {
     await page.locator('#window-about [aria-label="Close"]').hover();
     await expect(tooltip).toBeVisible({ timeout: 2000 });
     await expect(tooltip).toHaveText('Close');
+  });
+
+  test('project icon hover shows its description just below the icon', async ({ page }) => {
+    const tooltip = page.locator('#win98-tooltip');
+    const icon = page.locator('.desktop-icon[data-window-id="window-always-draft"]');
+    await icon.hover();
+    await expect(tooltip).toBeVisible({ timeout: 2000 });
+    await expect(tooltip).toHaveText('Blog');
+
+    // Both boxes are viewport pixels, so this holds under body zoom 1.5.
+    const iconBox = await icon.boundingBox();
+    const tipBox = await tooltip.boundingBox();
+    expect(Math.abs(tipBox.x - iconBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(tipBox.y - (iconBox.y + iconBox.height + 2))).toBeLessThanOrEqual(1);
+
+    // Each project icon shows its own description.
+    await page.locator('.desktop-icon[data-window-id="window-obsidian-game"]').hover();
+    await expect(tooltip).toHaveText('Game project', { timeout: 2000 });
+
+    await page.mouse.move(4, 4);
+    await expect(tooltip).toBeHidden();
+  });
+
+  test('system desktop icons show no tooltip', async ({ page }) => {
+    const tooltip = page.locator('#win98-tooltip');
+    for (const id of ['my-computer', 'recycle-bin', 'about', 'guestbook', 'contact']) {
+      await page.locator(`.desktop-icon[data-window-id="window-${id}"]`).hover();
+      // Past the 500ms show delay and still nothing.
+      await page.waitForTimeout(700);
+      await expect(tooltip).toBeHidden();
+    }
+  });
+
+  test('dragging a project icon never leaves its tooltip behind', async ({ page }) => {
+    const tooltip = page.locator('#win98-tooltip');
+    const icon = page.locator('.desktop-icon[data-window-id="window-claude-battery"]');
+    const before = await icon.boundingBox();
+
+    // Press on the label. The drag's pointer capture then re-fires
+    // pointerover on the icon, which used to bring the tooltip back mid-drag
+    // and leave it stranded at the old spot.
+    const label = await icon.locator('.desktop-icon-label').boundingBox();
+    const x = label.x + label.width / 2;
+    const y = label.y + label.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 40, y + 10, { steps: 4 });
+    await page.waitForTimeout(700);
+    await expect(tooltip).toBeHidden();
+    await page.mouse.move(x + 400, y + 40, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(700);
+    await expect(tooltip).toBeHidden();
+
+    // The icon really moved. After the pointer leaves and comes back, the
+    // tooltip shows again under the icon's new spot.
+    const after = await icon.boundingBox();
+    expect(after.x).toBeGreaterThan(before.x + 300);
+    await page.mouse.move(4, 4);
+    await icon.hover();
+    await expect(tooltip).toHaveText('AI tool', { timeout: 2000 });
+    const tipBox = await tooltip.boundingBox();
+    expect(Math.abs(tipBox.x - after.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(tipBox.y - (after.y + after.height + 2))).toBeLessThanOrEqual(1);
+  });
+
+  test('double-clicking a project icon leaves no tooltip behind', async ({ page }) => {
+    // Stub window.open so the link icon opens without leaving the page.
+    await page.evaluate(() => {
+      window.__opened = [];
+      window.open = function (url) { window.__opened.push(url); return null; };
+    });
+
+    const tooltip = page.locator('#win98-tooltip');
+    const label = page.locator('.desktop-icon[data-window-id="window-avails-click"] .desktop-icon-label');
+    await label.hover();
+    await expect(tooltip).toBeVisible({ timeout: 2000 });
+    await label.dblclick();
+    await expect.poll(() => page.evaluate(() => window.__opened.length)).toBe(1);
+
+    // The pointer is still on the icon, but the press keeps it quiet.
+    await page.waitForTimeout(700);
+    await expect(tooltip).toBeHidden();
+  });
+
+  test('project icons stay quiet while a context menu is open', async ({ page }) => {
+    const tooltip = page.locator('#win98-tooltip');
+    await page.click('#desktop', { button: 'right', position: { x: 700, y: 300 } });
+    await expect(page.locator('#context-menu-desktop')).toHaveClass(/open/);
+    await page.locator('.desktop-icon[data-window-id="window-always-draft"]').hover();
+    await page.waitForTimeout(700);
+    await expect(tooltip).toBeHidden();
+
+    // Once the menu closes, icons show their tooltips again.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#context-menu-desktop')).not.toHaveClass(/open/);
+    await page.locator('.desktop-icon[data-window-id="window-claude-battery"]').hover();
+    await expect(tooltip).toHaveText('AI tool', { timeout: 2000 });
   });
 });
