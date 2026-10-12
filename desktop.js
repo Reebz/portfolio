@@ -1978,6 +1978,17 @@
     var logoffOk = document.getElementById('logoff-ok');
     if (logoffOk) logoffOk.addEventListener('click', handleLogOff);
 
+    // Both dialogs sit outside #desktop, so the click handling above never
+    // sees their Cancel, No, or title-bar close buttons. Without these, only
+    // Esc closed them, and a phone has no Esc key.
+    ['window-shutdown', 'window-logoff'].forEach(function(id) {
+      var dlg = document.getElementById(id);
+      if (!dlg) return;
+      dlg.addEventListener('click', function(e) {
+        if (e.target.closest('[data-close-window], [aria-label="Close"]')) closeWindow(id);
+      });
+    });
+
     // Global click for start menu
     document.addEventListener('click', handleGlobalClick);
 
