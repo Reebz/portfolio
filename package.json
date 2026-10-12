@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "My portfolio site, styled as a Windows 98 desktop — down to the BIOS boot sequence and the hardware specs. Static HTML, CSS, and vanilla JavaScript. No frameworks, no build step. Hosted on GitHub Pages.",
   "scripts": {
-    "test": "npx playwright test"
+    "test": "npx playwright test",
+    "card": "node scripts/capture-card.js"
   },
   "repository": {
     "type": "git",
