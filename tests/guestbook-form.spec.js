@@ -7,17 +7,9 @@
 // simple bots before anything is sent, and a failed signing opens the
 // failed-send box titled "Guestbook".
 const { test, expect } = require('@playwright/test');
-const { mockGoatCounter, mockFormspree } = require('./_helpers');
+const { bootedDesktop, mockFormspree } = require('./_helpers');
 
 const APPROVAL_NOTE = 'Your entry will appear after the webmaster approves it.';
-
-async function bootedDesktop(page) {
-  await mockGoatCounter(page);
-  await page.goto('/');
-  await page.evaluate(() => sessionStorage.setItem('booted', '1'));
-  await page.goto('/');
-  await expect(page.locator('#desktop')).toBeVisible();
-}
 
 async function openGuestbook(page) {
   await page.evaluate(() => window.__win98.open('window-guestbook'));

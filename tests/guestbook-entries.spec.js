@@ -6,7 +6,7 @@
 // broken file leaves only the 1999 entries and logs nothing. Each spec
 // answers guestbook.json itself, so none depends on the committed file.
 const { test, expect } = require('@playwright/test');
-const { mockGoatCounter, attachConsoleGate, assertConsoleClean } = require('./_helpers');
+const { bootedDesktop, attachConsoleGate, assertConsoleClean } = require('./_helpers');
 
 const NAMES_1999 = ['CoolDude99', 'xX_WebMaster_Xx', '~*SuRfErGrL*~', 'hackerman_2600', 'FutureBoy2000'];
 
@@ -22,14 +22,6 @@ async function stubEntriesFile(page, answer) {
 
 function jsonAnswer(entries) {
   return { status: 200, contentType: 'application/json', body: JSON.stringify(entries) };
-}
-
-async function bootedDesktop(page) {
-  await mockGoatCounter(page);
-  await page.goto('/');
-  await page.evaluate(() => sessionStorage.setItem('booted', '1'));
-  await page.goto('/');
-  await expect(page.locator('#desktop')).toBeVisible();
 }
 
 async function openGuestbook(page) {

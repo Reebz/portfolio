@@ -1,6 +1,6 @@
 // Shared test helpers.
 //
-// Three responsibilities:
+// Four responsibilities:
 //   1. mockGoatCounter(page)   — intercept the production analytics CDN so
 //      CI doesn't hit gc.zgo.at on every PR (issue #15).
 //   2. attachConsoleGate(page) — collect console errors / page errors into
@@ -9,6 +9,8 @@
 //      on any unexpected console output (issue #14).
 //   3. mockFormspree(page)     — answer the Contact and Guestbook forms'
 //      sends locally, so no test emails Mitch.
+//   4. bootedDesktop(page)     — load the desktop with the boot sequence
+//      skipped and analytics stubbed.
 //
 // Adoption note (issue #15):
 // We did not rewrite every spec to import a fixture-based `test` from this
@@ -26,6 +28,8 @@
 // fetch isn't a meaningful share of CI analytics traffic. The pragmatic
 // compromise reduces CI hits on gc.zgo.at by >80% while keeping the diff
 // small.
+
+const { expect } = require('@playwright/test');
 
 /**
  * Stub the GoatCounter analytics endpoints so they never hit production.
@@ -53,6 +57,18 @@ async function mockGoatCounter(page) {
       body: JSON.stringify({ count: '42,000' }),
     })
   );
+}
+
+/**
+ * Load the desktop with the boot sequence skipped: the first load sets the
+ * session flag boot.js checks, and the second load runs with it.
+ */
+async function bootedDesktop(page) {
+  await mockGoatCounter(page);
+  await page.goto('/');
+  await page.evaluate(() => sessionStorage.setItem('booted', '1'));
+  await page.goto('/');
+  await expect(page.locator('#desktop')).toBeVisible();
 }
 
 // Bodies Formspree's AJAX endpoint answers with, per mockFormspree mode.
@@ -192,6 +208,7 @@ function assertConsoleClean(gate, options) {
 
 module.exports = {
   mockGoatCounter,
+  bootedDesktop,
   mockFormspree,
   attachConsoleGate,
   assertConsoleClean,

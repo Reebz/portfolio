@@ -6,20 +6,12 @@
 // title-bar close button closes it. tests/send-error-box.spec.js covers the
 // box's behaviour on the desktop.
 const { test, expect } = require('@playwright/test');
-const { mockGoatCounter, mockFormspree } = require('./_helpers');
+const { bootedDesktop, mockFormspree } = require('./_helpers');
 
 const PX_TOLERANCE = 1;
 
 function box(page) {
   return page.locator('#window-send-error');
-}
-
-async function bootedPhone(page) {
-  await mockGoatCounter(page);
-  await page.goto('/');
-  await page.evaluate(() => sessionStorage.setItem('booted', '1'));
-  await page.goto('/');
-  await expect(page.locator('#desktop')).toBeVisible();
 }
 
 // Fills Contact, taps Send against a blocked Formspree and waits for the box.
@@ -59,7 +51,7 @@ async function expectBoxFits(page) {
 
 test.describe('Mobile failed-send box', () => {
   test.beforeEach(async ({ page }) => {
-    await bootedPhone(page);
+    await bootedDesktop(page);
   });
 
   test('the box fits the screen with every button visible', async ({ page }) => {

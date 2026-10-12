@@ -1,19 +1,11 @@
-// One sender for the Contact and Guestbook forms.
+// One send function (sendForm) for the Contact and Guestbook forms.
 //
 // Every send has an 8-second deadline that fires on every browser, including
 // Safari before 16, which lacks AbortSignal.timeout, and under Playwright's
 // fake clock. A reply or deadline that lands after Contact was closed and
 // reopened leaves the reopened form alone.
 const { test, expect } = require('@playwright/test');
-const { mockGoatCounter, mockFormspree } = require('./_helpers');
-
-async function bootedDesktop(page) {
-  await mockGoatCounter(page);
-  await page.goto('/');
-  await page.evaluate(() => sessionStorage.setItem('booted', '1'));
-  await page.goto('/');
-  await expect(page.locator('#desktop')).toBeVisible();
-}
+const { bootedDesktop, mockFormspree } = require('./_helpers');
 
 async function openContact(page) {
   await page.evaluate(() => window.__win98.open('window-contact'));

@@ -904,8 +904,6 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
 
 #guestbook-form p {
   margin: 0 0 6px;
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  -webkit-font-smoothing: none;
 }
 
 .guestbook-form-actions {
@@ -927,13 +925,6 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
   width: 1px;
   height: 1px;
   overflow: hidden;
-}
-
-/* Desktop text size; phones keep the 14px floor. */
-@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
-  #guestbook-form p {
-    font-size: 11px;
-  }
 }
 
 /* === Mobile / Touch ===
@@ -2419,12 +2410,6 @@ html.shutdown-dim #window-shutdown {
   image-rendering: pixelated;
 }
 
-.send-error-text,
-.send-error-mail {
-  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
-  -webkit-font-smoothing: none;
-}
-
 .send-error-text p {
   margin: 0 0 8px;
   line-height: 1.4;
@@ -2469,14 +2454,6 @@ html.shutdown-dim #window-shutdown {
 .send-error-mail:active {
   box-shadow: inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey;
   text-shadow: 1px 1px #222;
-}
-
-/* Desktop text size; phones keep the 14px floor. */
-@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
-  .send-error-text,
-  .send-error-mail {
-    font-size: 11px;
-  }
 }
 
 /* The box's 4px margin sits on both sides of a phone screen. */

@@ -416,7 +416,7 @@
     // Stop analogue clock if closing the clock window
     if (id === 'window-clock') stopAnalogueClock();
 
-    // Bump the contact-submit token so any in-flight fetch resolution that
+    // Bump the form's submit token so any in-flight fetch resolution that
     // tries to auto-close/reset the form becomes a no-op for the new instance.
     if (id === 'window-contact') contactSubmitToken++;
     if (id === 'window-guestbook') guestbookSubmitToken++;
@@ -2667,7 +2667,7 @@
         var myToken = ++contactSubmitToken;
         var data = contactData(form);
 
-        sendForm(form.action, data).done.then(function() {
+        sendForm(formEndpoint(), data).done.then(function() {
           // A send from before a close and reopen leaves the new form alone.
           if (myToken !== contactSubmitToken) return;
           contactSent(form, myToken);
@@ -2685,7 +2685,7 @@
     }
   }
 
-  // Contact's fields as JSON, which Formspree recommends for AJAX sends.
+  // Contact's fields, as sent to Formspree.
   function contactData(form) {
     return {
       email: form.querySelector('[name="email"]').value,
@@ -2710,8 +2710,8 @@
 
   // What the failed-send box needs from Contact. mailSubject and mailBody
   // build the mail link from the copy that failed. retried runs Contact's
-  // own success state after a Retry, but only while the open form still
-  // holds that copy, so an edit made behind the box is never cleared.
+  // own success state after a Retry, but only while the form still holds
+  // that copy, so an edit made behind the box is never cleared.
   var CONTACT_SENDER = {
     windowId: 'window-contact',
     title: 'Contact',
@@ -2721,8 +2721,7 @@
     mailBody: function(data) { return data.message; },
     retried: function(data) {
       var form = document.getElementById('contact-form');
-      var win = windows.get('window-contact');
-      if (!form || !win || win.state === 'closed') return;
+      if (!form) return;
       var now = contactData(form);
       if (now.email !== data.email || now._subject !== data._subject || now.message !== data.message) return;
       contactSent(form, ++contactSubmitToken);
@@ -2797,7 +2796,7 @@
   }
 
   // What the failed-send box needs from the Guestbook. retried runs the
-  // success state only while the open form still holds the copy that failed.
+  // success state only while the form still holds the copy that failed.
   var GUESTBOOK_SENDER = {
     windowId: 'window-guestbook',
     title: 'Guestbook',
@@ -2807,8 +2806,7 @@
     mailBody: function(data) { return 'Name: ' + data.name + '\nDate: ' + data.date + '\n\n' + data.message; },
     retried: function(data) {
       var form = document.getElementById('guestbook-form');
-      var win = windows.get('window-guestbook');
-      if (!form || !win || win.state === 'closed') return;
+      if (!form) return;
       if (form.querySelector('#guestbook-name').value !== data.name ||
           form.querySelector('#guestbook-message').value !== data.message) return;
       guestbookSigned(form);
@@ -2823,7 +2821,7 @@
   // console-error gate opens the Guestbook), and the next open tries again.
   // A successful load is kept, so the entries go in once per page load.
   var guestbookLoad = null;
-  var GUESTBOOK_DATE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+  var GUESTBOOK_DATE_FORMAT = /^(\d{2})\/(\d{2})\/(\d{4})$/;
 
   function loadGuestbookEntries() {
     if (guestbookLoad || typeof fetch !== 'function') return;
@@ -2849,7 +2847,7 @@
     list.forEach(function(entry, index) {
       if (!entry || typeof entry.name !== 'string' || typeof entry.date !== 'string' ||
           typeof entry.message !== 'string') return;
-      var date = GUESTBOOK_DATE.exec(entry.date);
+      var date = GUESTBOOK_DATE_FORMAT.exec(entry.date);
       if (!date || entry.name.length > 30 || entry.message.length > 140) return;
       kept.push({ entry: entry, index: index, day: date[3] + date[1] + date[2] });
     });
@@ -2889,11 +2887,16 @@
   // --- Form sends ---
   // Contact and the Guestbook both post through sendForm. Its deadline comes
   // from setTimeout and an AbortController, because Safari before 16 lacks
-  // AbortSignal.timeout, and a send there that never got a reply stayed on
-  // "Sending..." for good.
+  // AbortSignal.timeout.
   var SEND_DEADLINE_MS = 8000;
 
-  // Posts data as JSON. send.done resolves on a 2xx reply whose body has no
+  // Both forms post to the Contact form's Formspree endpoint.
+  function formEndpoint() {
+    var form = document.getElementById('contact-form');
+    return form ? form.action : '';
+  }
+
+  // Posts data as JSON, which Formspree recommends for AJAX sends. send.done resolves on a 2xx reply whose body has no
   // error or errors key, and otherwise rejects with { kind, status, message },
   // where kind is 'timeout', 'network' (a blocked request, or a browser with
   // no fetch) or 'http'. send.abort() cancels the request and leaves done
@@ -2966,6 +2969,8 @@
   var MAIL_ADDRESS = 'mitch@ribar.ai';
   // Windows mail handlers drop or cut longer mailto links.
   var MAILTO_MAX = 1800;
+  // The subject keeps to this many encoded characters, so the body always has room.
+  var MAILTO_SUBJECT_MAX = 300;
   var sendError = null; // the open box: { sender, retry, quiet }
 
   var SEND_ERROR_BODY =
@@ -2984,12 +2989,6 @@
       '<button type="button" data-close-window="' + SEND_ERROR_ID + '">Cancel</button>' +
     '</div>';
 
-  // Both forms post to the Contact form's Formspree endpoint.
-  function formEndpoint() {
-    var form = document.getElementById('contact-form');
-    return form ? form.action : '';
-  }
-
   // The box's reason line for each way a send can fail.
   function sendFailureText(reason) {
     if (reason.kind === 'timeout') {
@@ -3007,10 +3006,7 @@
   // that failed. A later failure from either form replaces the box and any
   // Retry it had pending.
   function showSendError(sender, data, reason) {
-    if (sendError) {
-      sendError.quiet = true;
-      closeWindow(SEND_ERROR_ID);
-    }
+    closeSendErrorQuietly();
     var state = { sender: sender, retry: null, quiet: false };
     sendError = state;
 
@@ -3040,7 +3036,9 @@
       state.retry.done.then(function() {
         state.retry = null;
         closeWindow(SEND_ERROR_ID);
-        sender.retried(data);
+        // The form's own success state runs only while its window is open.
+        var win = windows.get(sender.windowId);
+        if (win && win.state !== 'closed') sender.retried(data);
       }, function(failure) {
         state.retry = null;
         retryBtn.removeAttribute('aria-disabled');
@@ -3064,12 +3062,18 @@
     retryBtn.focus({ preventScroll: true });
   }
 
-  // A send from sender's own button replaces its earlier failure, so that
-  // form's box closes without handing focus back, along with any pending Retry.
-  function dismissSendError(sender) {
-    if (!sendError || sendError.sender !== sender) return;
+  // Closes the open box, and any Retry it has pending, without handing focus
+  // back to its form.
+  function closeSendErrorQuietly() {
+    if (!sendError) return;
     sendError.quiet = true;
     closeWindow(SEND_ERROR_ID);
+  }
+
+  // A send from sender's own button replaces its earlier failure, so that
+  // form's box closes quietly.
+  function dismissSendError(sender) {
+    if (sendError && sendError.sender === sender) closeSendErrorQuietly();
   }
 
   // Closing the box activates its form's window again, restoring it if it
@@ -3115,12 +3119,13 @@
   // pass MAILTO_MAX characters gets a shortened body that ends with a note
   // sending the visitor back to the form, which still holds the full text.
   function mailtoLink(sender, data) {
-    // The subject keeps to 300 encoded characters, so the body always has room.
-    var head = 'mailto:' + MAIL_ADDRESS + '?subject=' + encodedPrefix(sender.mailSubject(data), 300) + '&body=';
-    var body = mailtoEncode(sender.mailBody(data));
-    if (head.length + body.length <= MAILTO_MAX) return head + body;
+    var head = 'mailto:' + MAIL_ADDRESS + '?subject=' +
+      encodedPrefix(sender.mailSubject(data), MAILTO_SUBJECT_MAX) + '&body=';
+    var body = sender.mailBody(data);
+    var encodedBody = mailtoEncode(body);
+    if (head.length + encodedBody.length <= MAILTO_MAX) return head + encodedBody;
     var note = mailtoEncode('\n\n[Message shortened. The full text is still in the ' + sender.title + ' window.]');
-    return head + encodedPrefix(sender.mailBody(data), MAILTO_MAX - head.length - note.length) + note;
+    return head + encodedPrefix(body, MAILTO_MAX - head.length - note.length) + note;
   }
 
   function mailtoEncode(text) {
@@ -3141,7 +3146,8 @@
       return text.slice(0, code >= 0xD800 && code <= 0xDBFF ? n - 1 : n);
     }
     var lo = 0;
-    var hi = text.length;
+    // Every character encodes to at least one, so no longer start can fit.
+    var hi = Math.min(text.length, Math.max(budget, 0));
     while (lo < hi) {
       var mid = Math.ceil((lo + hi) / 2);
       if (mailtoEncode(start(mid)).length <= budget) lo = mid;

@@ -7,18 +7,10 @@
 // button with everything the visitor typed still in place.
 // tests/mobile-send-error-box.spec.js covers phones.
 const { test, expect } = require('@playwright/test');
-const { mockGoatCounter, mockFormspree } = require('./_helpers');
+const { bootedDesktop, mockGoatCounter, mockFormspree } = require('./_helpers');
 
 const MAIL = 'mitch@ribar.ai';
 const SHORTENED_NOTE = '[Message shortened. The full text is still in the Contact window.]';
-
-async function bootedDesktop(page) {
-  await mockGoatCounter(page);
-  await page.goto('/');
-  await page.evaluate(() => sessionStorage.setItem('booted', '1'));
-  await page.goto('/');
-  await expect(page.locator('#desktop')).toBeVisible();
-}
 
 async function fillContact(page, { subject = 'Hi', message = 'Love the Minesweeper!' } = {}) {
   await page.evaluate(() => window.__win98.open('window-contact'));
