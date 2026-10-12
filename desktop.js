@@ -368,9 +368,6 @@
     // Create taskbar button
     createTaskbarButton(id, win);
 
-    // Update hash
-    updateHash(id);
-
     var openHook = windowOpenHooks[id];
     if (openHook) openHook();
 
@@ -444,8 +441,7 @@
     if (activeWindowId === id) {
       activeWindowId = null;
       focusNextWindow();
-      // Keyboard focus follows the next window, as the old hash echo did by
-      // reopening it about 100 ms after the close.
+      // Keyboard focus follows the next window.
       var next = activeWindowId && windows.get(activeWindowId);
       if (next && next.el) next.el.focus({ preventScroll: true });
     }
@@ -1979,8 +1975,7 @@
     if (logoffOk) logoffOk.addEventListener('click', handleLogOff);
 
     // Both dialogs sit outside #desktop, so the click handling above never
-    // sees their Cancel, No, or title-bar close buttons. Without these, only
-    // Esc closed them, and a phone has no Esc key.
+    // sees their Cancel, No, or title-bar close buttons.
     ['window-shutdown', 'window-logoff'].forEach(function(id) {
       var dlg = document.getElementById(id);
       if (!dlg) return;
