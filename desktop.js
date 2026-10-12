@@ -201,6 +201,8 @@
   // time and only mutates state if its captured value still matches —
   // protects against mid-flight close/reopen wiping a fresh draft.
   var contactSubmitToken = 0;
+  // The same guard for the Guestbook's signing form.
+  var guestbookSubmitToken = 0;
 
   // Single source of truth for registering a window with both the routing whitelist
   // and the lifecycle map. Every window-creation path flows through this.
@@ -417,6 +419,7 @@
     // Bump the contact-submit token so any in-flight fetch resolution that
     // tries to auto-close/reset the form becomes a no-op for the new instance.
     if (id === 'window-contact') contactSubmitToken++;
+    if (id === 'window-guestbook') guestbookSubmitToken++;
 
     // Reset help-book render guard so the next launch can re-render cleanly.
     if (id === 'window-help-book') helpBookRendered = false;
@@ -436,6 +439,13 @@
     if (id === 'window-contact') {
       var sendBtn = win.el.querySelector('button[type="submit"]');
       if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+    }
+    // The Guestbook's sign button resets the same way, and its approval note goes.
+    if (id === 'window-guestbook') {
+      var signBtn = win.el.querySelector('#guestbook-form button[type="submit"]');
+      if (signBtn) { signBtn.textContent = 'Sign Guestbook'; signBtn.disabled = false; }
+      var approvalNote = win.el.querySelector('#guestbook-form .guestbook-status');
+      if (approvalNote) approvalNote.textContent = '';
     }
 
     // Remove taskbar button
@@ -2719,6 +2729,92 @@
     }
   };
 
+  // --- Guestbook signing form ---
+  // A signing goes to Mitch's inbox through the Contact form's endpoint,
+  // marked with the subject "Guestbook entry". Nothing shows on the page
+  // until he publishes it, so success only clears the form and says so.
+  var GUESTBOOK_APPROVAL_NOTE = 'Your entry will appear after the webmaster approves it.';
+
+  function initGuestbookForm() {
+    var form = document.getElementById('guestbook-form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      // People never see the trap, so a filled one means a bot: it gets
+      // the normal success state, and nothing is sent.
+      if (form.querySelector('[name="_gotcha"]').value) {
+        guestbookSigned(form);
+        return;
+      }
+
+      // This signing replaces any earlier failure, so its box closes first,
+      // and an approval note from an earlier signing goes.
+      dismissSendError(GUESTBOOK_SENDER);
+      form.querySelector('.guestbook-status').textContent = '';
+      var signBtn = form.querySelector('button[type="submit"]');
+      signBtn.textContent = 'Signing...';
+      signBtn.disabled = true;
+
+      var myToken = ++guestbookSubmitToken;
+      var data = {
+        subject: 'Guestbook entry',
+        name: form.querySelector('#guestbook-name').value,
+        message: form.querySelector('#guestbook-message').value,
+        date: guestbookDate(new Date())
+      };
+
+      sendForm(formEndpoint(), data).done.then(function() {
+        if (myToken !== guestbookSubmitToken) return;
+        guestbookSigned(form);
+      }, function(reason) {
+        if (myToken === guestbookSubmitToken) {
+          signBtn.textContent = 'Sign Guestbook';
+          signBtn.disabled = false;
+        }
+        showSendError(GUESTBOOK_SENDER, data, reason);
+      });
+    });
+  }
+
+  // The Guestbook's success state: the fields clear and the approval note shows.
+  function guestbookSigned(form) {
+    form.reset();
+    var signBtn = form.querySelector('button[type="submit"]');
+    signBtn.textContent = 'Sign Guestbook';
+    signBtn.disabled = false;
+    form.querySelector('.guestbook-status').textContent = GUESTBOOK_APPROVAL_NOTE;
+  }
+
+  // The visitor's own date as MM/DD/YYYY, the 1999 entries' format, so
+  // publishing copies it as is.
+  function guestbookDate(d) {
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    return two(d.getMonth() + 1) + '/' + two(d.getDate()) + '/' + d.getFullYear();
+  }
+
+  // What the failed-send box needs from the Guestbook. retried runs the
+  // success state only while the open form still holds the copy that failed.
+  var GUESTBOOK_SENDER = {
+    windowId: 'window-guestbook',
+    title: 'Guestbook',
+    noun: 'guestbook entry',
+    button: function() { return document.querySelector('#guestbook-form button[type="submit"]'); },
+    mailSubject: function(data) { return data.subject; },
+    mailBody: function(data) { return 'Name: ' + data.name + '\nDate: ' + data.date + '\n\n' + data.message; },
+    retried: function(data) {
+      var form = document.getElementById('guestbook-form');
+      var win = windows.get('window-guestbook');
+      if (!form || !win || win.state === 'closed') return;
+      if (form.querySelector('#guestbook-name').value !== data.name ||
+          form.querySelector('#guestbook-message').value !== data.message) return;
+      guestbookSigned(form);
+    }
+  };
+
   // --- Form sends ---
   // Contact and the Guestbook both post through sendForm. Its deadline comes
   // from setTimeout and an AbortController, because Safari before 16 lacks
@@ -4372,6 +4468,7 @@
     startClock();
     initVisitorCounter();
     initContactForm();
+    initGuestbookForm();
     initMyComputer();
     setupSystemTrayClicks();
     watchShutdownDim();

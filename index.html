@@ -148,6 +148,26 @@ Mitch</div>
       </div>
       <div class="window-body" role="document">
         <h2 style="margin:0 0 8px;font-size:14px;">Sign My Guestbook!</h2>
+        <!-- The script sends entries to the Contact form's endpoint, so this form has no action. -->
+        <form id="guestbook-form">
+          <div class="field-row-stacked">
+            <label for="guestbook-name">Your name</label>
+            <input type="text" id="guestbook-name" name="name" maxlength="30" required>
+          </div>
+          <div class="field-row-stacked">
+            <label for="guestbook-message">Message (140 characters max)</label>
+            <textarea id="guestbook-message" name="message" maxlength="140" rows="3" required></textarea>
+          </div>
+          <!-- A trap for bots: people never see this field, and the page sends nothing when it is filled. -->
+          <div class="guestbook-trap" aria-hidden="true">
+            <input type="text" name="_gotcha" tabindex="-1" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" data-protonpass-ignore>
+          </div>
+          <p class="guestbook-public-note">Approved entries are public and stay in this site's public history.</p>
+          <div class="guestbook-form-actions">
+            <button type="submit">Sign Guestbook</button>
+            <p class="guestbook-status" role="status"></p>
+          </div>
+        </form>
         <div class="guestbook-entry">
           <span class="guestbook-name">CoolDude99</span>
           <span class="guestbook-date">03/15/1999</span>

@@ -867,6 +867,70 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
   line-height: 1.4;
 }
 
+/* Visitor names and messages can hold long unbroken words. */
+.guestbook-name,
+.guestbook-message {
+  overflow-wrap: anywhere;
+}
+
+/* The signing form. Its rules stay under #guestbook-form, because 98.css
+   styles bare inputs, textareas and buttons everywhere else. */
+#guestbook-form {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--win98-grey);
+}
+
+#guestbook-form .field-row-stacked {
+  margin: 0 0 6px;
+}
+
+#guestbook-form input[type="text"],
+#guestbook-form textarea {
+  width: 100%;
+}
+
+/* WebKit gives the empty message box a sideways scrollbar, as it does
+   Contact's. */
+#guestbook-form textarea {
+  resize: none;
+  overflow-x: hidden;
+}
+
+#guestbook-form p {
+  margin: 0 0 6px;
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  -webkit-font-smoothing: none;
+}
+
+.guestbook-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#guestbook-form .guestbook-status {
+  margin: 0;
+}
+
+/* Off screen, out of the tab order and hidden from screen readers, but
+   still in the form, where a bot that fills every field finds it. */
+.guestbook-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Desktop text size; phones keep the 14px floor. */
+@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  #guestbook-form p {
+    font-size: 11px;
+  }
+}
+
 /* === Mobile / Touch ===
    Entry point for responsive rules on touch devices (no hover + coarse pointer).
    Two breakpoints (phone-portrait, phone-landscape) cover phones. Tablets

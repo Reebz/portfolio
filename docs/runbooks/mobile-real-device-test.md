@@ -131,6 +131,14 @@ Walk these in order on each device. If any step fails, see "What if a step fails
 
 **Automated coverage.** [`tests/send-error-box.spec.js`](../../tests/send-error-box.spec.js), [`tests/mobile-send-error-box.spec.js`](../../tests/mobile-send-error-box.spec.js). Manual is the backstop for the real mail app hand-off and the real clipboard.
 
+### 15. Guestbook signing with a password manager (iPhone, after deploy)
+
+**Action.** On iPhone, with your password manager's autofill turned on, open the Guestbook. Tap the name field and accept the password manager's fill offer if it makes one. Type a short message and tap Sign Guestbook. This is the one live signing, so it really sends.
+
+**Expected.** The fields clear and "Your entry will appear after the webmaster approves it." shows. An email with the subject "Guestbook entry" and the name, date and message arrives. The hidden trap field cannot be seen, so the email is the proof that the password manager left it empty: a filled trap sends nothing.
+
+**Automated coverage.** [`tests/guestbook-form.spec.js`](../../tests/guestbook-form.spec.js) covers a filled trap. Manual is the backstop for real password managers.
+
 ## What if a step fails
 
 1. File a GitHub issue. Title it `mobile real-device: step N failed — <one-line summary>`. Link to this runbook in the body, paste the device + iOS version + Safari version, and attach a screenshot or screen recording.
