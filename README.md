@@ -66,6 +66,16 @@ docker run --rm --network host -v "$(pwd):/work" -w /work \
 
 Review the updated PNGs in `git diff` to confirm they reflect the intended change before committing.
 
+### Updating the link-card picture
+
+`img/link-card.png` is the picture LinkedIn, Slack, iMessage, and X show when someone shares a reebz.com link. It is a capture of the real desktop with about-me.txt open, and nothing regenerates it automatically, so re-run the capture after any visible change to the desktop:
+
+```bash
+npm run card
+```
+
+The command captures the desktop from the files on disk, with no server or network, and writes a short fingerprint of the PNG (the start of its SHA-256 hash) into the `og:image` address in `index.html`. Apps cache card pictures by address, so the new address makes them fetch the new picture. View the PNG at about 400 px wide to check it still reads as a Win98 desktop with a legible note, then commit it together with `index.html`. A rerun with no visible change leaves both files as they were, and `tests/link-card.spec.js` fails if the address and the committed PNG disagree.
+
 ### Real-device runbook
 
 Automated tests catch most regressions but cannot fully model real iOS Safari touch behavior. Walk through [`docs/runbooks/mobile-real-device-test.md`](docs/runbooks/mobile-real-device-test.md) on an actual iPhone + iPad before merging any PR that touches mobile-affecting code (style.css mobile @media blocks, desktop.js `isMobile()` paths, taskbar/Start markup, or boot.js).

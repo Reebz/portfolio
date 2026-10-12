@@ -625,6 +625,9 @@ test.describe('U3 — Focus-state: inactive title bars everywhere', () => {
     // Guestbook is now the only/topmost window → its title bar becomes active.
     await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open');
     await expect(page.locator('#window-guestbook .title-bar')).not.toHaveClass(/inactive/);
+    // Keyboard focus follows, so Tab and screen readers pick up in Guestbook.
+    await expect.poll(() => page.evaluate(() => document.activeElement && document.activeElement.id))
+      .toBe('window-guestbook');
   });
 
   // Initial-open path: the first (single) window a user opens is focused, so

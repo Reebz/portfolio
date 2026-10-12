@@ -16,7 +16,7 @@ test.describe('BIOS Boot', () => {
     // Boot overlay should be visible (sessionStorage clear on fresh context)
     const overlay = page.locator('#boot-overlay');
     // It may have already started — just verify the page loads
-    await expect(page).toHaveTitle(/Portfolio 98/);
+    await expect(page).toHaveTitle(/^Mitch Ribar \| Portfolio 98/);
   });
 
   test('skips boot on hash deep link', async ({ page }) => {

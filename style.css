@@ -231,6 +231,66 @@ body {
   flex: 1;
 }
 
+/* === No-JavaScript panel ===
+   The <noscript> window in index.html. With JavaScript on, the browser reads
+   noscript content as text, so these rules match nothing and no pixel moves.
+   The window sits centered on the black screen, never closer than 4px to an
+   edge. The name, the role line, and the email come first, so a short
+   screen scrolls the project list under them instead of cutting them off. */
+#nojs {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, calc(100% - 8px));
+  max-height: calc(100% - 8px);
+  /* Undo the .window 300px floor and the phone window margin, which would
+     push the window past a narrow screen or off center. */
+  min-width: 0;
+  margin: 0;
+}
+
+/* On a short screen only the list gives way, never the title bar. */
+#nojs .title-bar {
+  flex-shrink: 0;
+}
+
+/* Phones already pad window bodies 4px. On the desktop this keeps the text
+   off the edge of the white, as Notepad's 4px does. */
+#nojs .window-body {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+#nojs p {
+  margin: 0 0 8px;
+}
+
+/* Nothing below the closing line, or a screen that fits every word would
+   still scroll the list by a blank strip. */
+#nojs p:last-child {
+  margin-bottom: 0;
+}
+
+#nojs .nojs-projects {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Title and description side by side, like Explorer's Details view. */
+#nojs dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+}
+
+#nojs dd {
+  margin: 0;
+}
+
 /* === Taskbar === */
 #taskbar {
   position: fixed;

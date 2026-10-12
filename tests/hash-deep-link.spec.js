@@ -23,6 +23,20 @@ test.describe('U3 — hash deep-link to dynamic windows', () => {
     await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'open', { timeout: 5000 });
   });
 
+  test('AE3: opens the MS-DOS Prompt when navigating to /#window-dos cold', async ({ page }) => {
+    await page.goto('/#window-dos');
+    await expect(page.locator('#window-dos')).toHaveAttribute('data-state', 'open', { timeout: 5000 });
+  });
+
+  test('AE3: opens the MS-DOS Prompt on a same-document navigation to #window-dos', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => sessionStorage.setItem('booted', '1'));
+    await page.goto('/');
+    // A typed address on a running page navigates within the document, with no reload.
+    await page.evaluate(() => { location.hash = '#window-dos'; });
+    await expect(page.locator('#window-dos')).toHaveAttribute('data-state', 'open', { timeout: 5000 });
+  });
+
   test('unknown hashes do not throw and do not open anything', async ({ page }) => {
     await page.goto('/#window-bogus');
     // Wait long enough for any router activity to settle.
