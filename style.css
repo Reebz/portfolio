@@ -2330,3 +2330,89 @@ html.shutdown-dim #window-shutdown {
     text-shadow: none;
   }
 }
+
+/* === Failed-send box === */
+/* Above every window and Clippy (8500), below the taskbar (9000), the Start
+   menu and context menus. Windows rise on press, so without this a tap on
+   the form behind the box would bury it. */
+#window-send-error {
+  z-index: 8600 !important;
+}
+
+.send-error-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.send-error-icon {
+  flex: none;
+  image-rendering: pixelated;
+}
+
+.send-error-text,
+.send-error-mail {
+  font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+  -webkit-font-smoothing: none;
+}
+
+.send-error-text p {
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.send-error-address {
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+/* Win98 centers a message box's buttons. Phones wrap them onto more rows. */
+.send-error-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Retry stays focusable while it waits, so it is greyed by hand. */
+.send-error-retry[aria-disabled="true"] {
+  color: grey;
+  text-shadow: 1px 1px 0 #fff;
+}
+
+/* The mail link is a real link drawn as a 98.css button. */
+.send-error-mail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 23px;
+  min-width: 75px;
+  padding: 0 12px;
+  background: silver;
+  box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
+  color: transparent;
+  text-shadow: 0 0 #222;
+  text-decoration: none;
+}
+
+.send-error-mail:active {
+  box-shadow: inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey;
+  text-shadow: 1px 1px #222;
+}
+
+/* Desktop text size; phones keep the 14px floor. */
+@media not all and (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  .send-error-text,
+  .send-error-mail {
+    font-size: 11px;
+  }
+}
+
+/* The box's 4px margin sits on both sides of a phone screen. */
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  #window-send-error {
+    max-width: calc(100vw - 16px);
+  }
+}

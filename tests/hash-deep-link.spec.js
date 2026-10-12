@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { mockGoatCounter, attachConsoleGate, assertConsoleClean } = require('./_helpers');
 
 test.describe('U3 — hash deep-link to dynamic windows', () => {
   test('opens window-paint when navigating to /#window-paint cold', async ({ page }) => {
@@ -35,6 +36,19 @@ test.describe('U3 — hash deep-link to dynamic windows', () => {
     // A typed address on a running page navigates within the document, with no reload.
     await page.evaluate(() => { location.hash = '#window-dos'; });
     await expect(page.locator('#window-dos')).toHaveAttribute('data-state', 'open', { timeout: 5000 });
+  });
+
+  // The failed-send box only exists while a send has failed, so its address
+  // on a fresh load names nothing to open.
+  test('a cold load of the failed-send box address opens nothing and logs no error', async ({ page }) => {
+    const gate = attachConsoleGate(page);
+    await mockGoatCounter(page);
+    await page.goto('/#window-send-error');
+    await expect(page.locator('#desktop')).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.window[data-state="open"]')).toHaveCount(0);
+    await expect(page.locator('#window-send-error')).toHaveCount(0);
+    assertConsoleClean(gate);
   });
 
   test('unknown hashes do not throw and do not open anything', async ({ page }) => {

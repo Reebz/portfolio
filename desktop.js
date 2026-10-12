@@ -95,7 +95,7 @@
   var VALID_WINDOWS = new Set();
 
   // --- State ---
-  var windows = new Map(); // id -> { state, prevRect, el, taskbarBtn, transient }
+  var windows = new Map(); // id -> { state, prevRect, el, taskbarBtn, transient, messageBox }
   var zCounter = 10;
   var activeWindowId = null;
   var cascadeIndex = 0;
@@ -204,6 +204,9 @@
 
   // Single source of truth for registering a window with both the routing whitelist
   // and the lifecycle map. Every window-creation path flows through this.
+  // opts.messageBox marks a Win98 message box, which belongs to another
+  // window: it gets no taskbar button, no opened/closed announcement, and
+  // Show Desktop leaves it alone.
   function registerWindow(id, el, opts) {
     opts = opts || {};
     VALID_WINDOWS.add(id);
@@ -223,6 +226,7 @@
       el: el,
       taskbarBtn: null,
       transient: !!opts.transient,
+      messageBox: !!opts.messageBox,
     });
   }
 
@@ -280,7 +284,8 @@
     'window-shutdown': 1,
     'window-logoff': 1,
     'window-run-dialog': 1,
-    'window-cavaro': 1
+    'window-cavaro': 1,
+    'window-send-error': 1
   };
 
   // On portrait phones these resizable app windows open maximized (filling
@@ -366,7 +371,7 @@
     }
 
     // Create taskbar button
-    createTaskbarButton(id, win);
+    if (!win.messageBox) createTaskbarButton(id, win);
 
     var openHook = windowOpenHooks[id];
     if (openHook) openHook();
@@ -374,7 +379,9 @@
     // Dialog-style windows ding on open (no-op when sound is muted).
     if (DIALOG_SOUND_IDS[id] && window.Sounds) window.Sounds.playError();
 
-    announce(getTitleText(win.el) + ' opened');
+    // A message box carries its owner's title, so "Contact opened" would
+    // be wrong; its alertdialog role announces it instead.
+    if (!win.messageBox) announce(getTitleText(win.el) + ' opened');
   }
 
   function closeWindow(id) {
@@ -447,7 +454,7 @@
     }
 
     updateHash(activeWindowId);
-    announce(getTitleText(win.el) + ' closed');
+    if (!win.messageBox) announce(getTitleText(win.el) + ' closed');
 
     // Transient windows (e.g. Notepad — one DOM node per launch) get fully torn down
     // so the DOM and the windows registry don't accumulate forever.
@@ -2635,6 +2642,9 @@
           return;
         }
 
+        // This send replaces any earlier failure, so its box closes first.
+        dismissSendError(CONTACT_SENDER);
+
         var sendBtn = form.querySelector('button[type="submit"]');
         if (sendBtn) {
           sendBtn.textContent = 'Sending...';
@@ -2645,35 +2655,69 @@
         // the token, so a user who closes-and-reopens the form mid-flight
         // gets a fresh draft instead of an auto-reset 1.5s after success.
         var myToken = ++contactSubmitToken;
-
-        // Build JSON body — Formspree recommends JSON for AJAX
-        var data = {
-          email: form.querySelector('[name="email"]').value,
-          _subject: form.querySelector('[name="_subject"]').value,
-          message: form.querySelector('[name="message"]').value
-        };
+        var data = contactData(form);
 
         sendForm(form.action, data).done.then(function() {
           // A send from before a close and reopen leaves the new form alone.
           if (myToken !== contactSubmitToken) return;
-          if (sendBtn) sendBtn.textContent = 'Message Sent!';
-          setTimeout(function() {
-            // Stale-submit guard: window was closed (and possibly reopened
-            // by now) during the success delay — leave the new instance alone.
-            if (myToken !== contactSubmitToken) return;
-            closeWindow('window-contact');
-            form.reset();
-            if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
-          }, 1500);
+          contactSent(form, myToken);
         }, function(reason) {
-          if (myToken !== contactSubmitToken || !sendBtn) return;
-          if (reason.kind === 'timeout') sendBtn.textContent = "Couldn't send — try again";
-          else sendBtn.textContent = reason.message || 'Send Failed - Try Again';
-          sendBtn.disabled = false;
+          // Only the current send resets the button, but a stale failure
+          // still opens the box, so a visitor who closed Contact learns the
+          // send failed and keeps the other ways to reach Mitch.
+          if (myToken === contactSubmitToken && sendBtn) {
+            sendBtn.textContent = 'Send';
+            sendBtn.disabled = false;
+          }
+          showSendError(CONTACT_SENDER, data, reason);
         });
       });
     }
   }
+
+  // Contact's fields as JSON, which Formspree recommends for AJAX sends.
+  function contactData(form) {
+    return {
+      email: form.querySelector('[name="email"]').value,
+      _subject: form.querySelector('[name="_subject"]').value,
+      message: form.querySelector('[name="message"]').value
+    };
+  }
+
+  // Contact's success state: "Message Sent!", then 1.5 seconds later the
+  // window closes and the form clears, unless a close or a newer send has
+  // bumped the token by then.
+  function contactSent(form, myToken) {
+    var sendBtn = form.querySelector('button[type="submit"]');
+    if (sendBtn) { sendBtn.textContent = 'Message Sent!'; sendBtn.disabled = true; }
+    setTimeout(function() {
+      if (myToken !== contactSubmitToken) return;
+      closeWindow('window-contact');
+      form.reset();
+      if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+    }, 1500);
+  }
+
+  // What the failed-send box needs from Contact. mailSubject and mailBody
+  // build the mail link from the copy that failed. retried runs Contact's
+  // own success state after a Retry, but only while the open form still
+  // holds that copy, so an edit made behind the box is never cleared.
+  var CONTACT_SENDER = {
+    windowId: 'window-contact',
+    title: 'Contact',
+    noun: 'message',
+    button: function() { return document.querySelector('#contact-form button[type="submit"]'); },
+    mailSubject: function(data) { return data._subject || 'Hello from your portfolio!'; },
+    mailBody: function(data) { return data.message; },
+    retried: function(data) {
+      var form = document.getElementById('contact-form');
+      var win = windows.get('window-contact');
+      if (!form || !win || win.state === 'closed') return;
+      var now = contactData(form);
+      if (now.email !== data.email || now._subject !== data._subject || now.message !== data.message) return;
+      contactSent(form, ++contactSubmitToken);
+    }
+  };
 
   // --- Form sends ---
   // Contact and the Guestbook both post through sendForm. Its deadline comes
@@ -2742,6 +2786,201 @@
     if (!body) return '';
     if (body.errors && body.errors.length && body.errors[0].message) return body.errors[0].message;
     return typeof body.error === 'string' ? body.error : '';
+  }
+
+  // --- Failed-send box ---
+  // A failed or unanswered send opens one Win98 message box with Retry,
+  // Open in Mail App, Copy Address and Cancel. Like a real message box it
+  // belongs to its form's window: it takes the form's title, has only a
+  // close button and no taskbar button, and closes back to the form's
+  // button. It keeps a copy of what failed, so Retry and the mail link
+  // still work after the form's window was closed.
+  var SEND_ERROR_ID = 'window-send-error';
+  var MAIL_ADDRESS = 'mitch@ribar.ai';
+  // Windows mail handlers drop or cut longer mailto links.
+  var MAILTO_MAX = 1800;
+  var sendError = null; // the open box: { sender, retry, quiet }
+
+  var SEND_ERROR_BODY =
+    '<div class="send-error-layout">' +
+      '<img src="img/icons/critical-32.png" alt="" class="send-error-icon" width="32" height="32">' +
+      '<div class="send-error-text" id="send-error-desc">' +
+        '<p class="send-error-headline"></p>' +
+        '<p class="send-error-reason"></p>' +
+        '<p>Press Retry, or write to <span class="send-error-address">' + MAIL_ADDRESS + '</span> from your mail app.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="send-error-buttons">' +
+      '<button type="button" class="default send-error-retry">Retry</button>' +
+      '<a class="send-error-mail" href="mailto:' + MAIL_ADDRESS + '">Open in Mail App</a>' +
+      '<button type="button" class="send-error-copy">Copy Address</button>' +
+      '<button type="button" data-close-window="' + SEND_ERROR_ID + '">Cancel</button>' +
+    '</div>';
+
+  // Both forms post to the Contact form's Formspree endpoint.
+  function formEndpoint() {
+    var form = document.getElementById('contact-form');
+    return form ? form.action : '';
+  }
+
+  // The box's reason line for each way a send can fail.
+  function sendFailureText(reason) {
+    if (reason.kind === 'timeout') {
+      return 'The mail server did not answer within ' + (SEND_DEADLINE_MS / 1000) + ' seconds.';
+    }
+    if (reason.kind === 'network') {
+      return 'Your browser could not reach the mail server. A lost connection or an ad blocker can cause this.';
+    }
+    if (reason.status === 429) return 'Too many messages were sent this minute. Wait a minute, then press Retry.';
+    if (reason.message) return 'The mail server said: ' + reason.message;
+    return 'The mail server answered with error ' + reason.status + '.';
+  }
+
+  // Opens the box for a failed send from sender, holding data, the copy
+  // that failed. A later failure from either form replaces the box and any
+  // Retry it had pending.
+  function showSendError(sender, data, reason) {
+    if (sendError) {
+      sendError.quiet = true;
+      closeWindow(SEND_ERROR_ID);
+    }
+    var state = { sender: sender, retry: null, quiet: false };
+    sendError = state;
+
+    createAppWindow(SEND_ERROR_ID, sender.title, SEND_ERROR_BODY,
+      { width: '420px', noResize: true, transient: true, messageBox: true, icon: false,
+        bodyStyle: 'padding:12px;background:var(--win98-silver);' });
+    var box = document.getElementById(SEND_ERROR_ID);
+    box.setAttribute('role', 'alertdialog');
+    box.setAttribute('aria-describedby', 'send-error-desc');
+
+    // Visitor text and the reason go in as plain text, never as HTML.
+    var reasonLine = box.querySelector('.send-error-reason');
+    var retryBtn = box.querySelector('.send-error-retry');
+    var copyBtn = box.querySelector('.send-error-copy');
+    box.querySelector('.send-error-headline').textContent = 'Your ' + sender.noun + ' could not be sent.';
+    reasonLine.textContent = sendFailureText(reason);
+    box.querySelector('.send-error-mail').href = mailtoLink(sender, data);
+
+    // Retry sends the copy that failed again. While it waits, the button is
+    // marked unavailable without disabling it, so it keeps focus.
+    retryBtn.addEventListener('click', function() {
+      if (state.retry) return;
+      retryBtn.setAttribute('aria-disabled', 'true');
+      retryBtn.textContent = 'Retrying...';
+      announce('Retrying...');
+      state.retry = sendForm(formEndpoint(), data);
+      state.retry.done.then(function() {
+        state.retry = null;
+        closeWindow(SEND_ERROR_ID);
+        sender.retried(data);
+      }, function(failure) {
+        state.retry = null;
+        retryBtn.removeAttribute('aria-disabled');
+        retryBtn.textContent = 'Retry';
+        reasonLine.textContent = sendFailureText(failure);
+        announce(reasonLine.textContent);
+      });
+    });
+    copyBtn.addEventListener('click', function() { copyMailAddress(box, copyBtn); });
+
+    registerCleanup(SEND_ERROR_ID, function() {
+      if (state.retry) state.retry.abort();
+      if (sendError === state) sendError = null;
+      // closeWindow focuses the next window after its cleanups run, so the
+      // hand-back waits until it has finished.
+      if (!state.quiet) Promise.resolve().then(function() { returnToSender(sender); });
+    });
+
+    // Win98 centers a message box; it opens with Retry, its default button.
+    centerWindowInViewport(box);
+    retryBtn.focus({ preventScroll: true });
+  }
+
+  // A send from sender's own button replaces its earlier failure, so that
+  // form's box closes without handing focus back, along with any pending Retry.
+  function dismissSendError(sender) {
+    if (!sendError || sendError.sender !== sender) return;
+    sendError.quiet = true;
+    closeWindow(SEND_ERROR_ID);
+  }
+
+  // Closing the box activates its form's window again, restoring it if it
+  // was minimized, and focuses the form's button. A closed window stays closed.
+  function returnToSender(sender) {
+    var win = windows.get(sender.windowId);
+    if (!win || win.state === 'closed') return;
+    if (win.state === 'minimized') restoreWindow(sender.windowId);
+    else bringToFront(sender.windowId);
+    var btn = sender.button();
+    if (btn) btn.focus({ preventScroll: true });
+  }
+
+  // Copy Address tries the Clipboard API, then execCommand. When neither
+  // reports success, the address is left selected for the visitor to copy.
+  function copyMailAddress(box, copyBtn) {
+    function copied() {
+      copyBtn.textContent = 'Copied!';
+      announce('Copied!');
+    }
+    function fallback() {
+      var range = document.createRange();
+      range.selectNodeContents(box.querySelector('.send-error-address'));
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      if (ok) copied();
+    }
+    var write = null;
+    try {
+      write = navigator.clipboard && navigator.clipboard.writeText(MAIL_ADDRESS);
+    } catch (e) {
+      write = null;
+    }
+    if (write && typeof write.then === 'function') write.then(copied, fallback);
+    else fallback();
+  }
+
+  // A mailto link to Mitch built from the copy that failed. Subject and body
+  // are percent-encoded with CRLF line breaks (RFC 6068). A link that would
+  // pass MAILTO_MAX characters gets a shortened body that ends with a note
+  // sending the visitor back to the form, which still holds the full text.
+  function mailtoLink(sender, data) {
+    // The subject keeps to 300 encoded characters, so the body always has room.
+    var head = 'mailto:' + MAIL_ADDRESS + '?subject=' + encodedPrefix(sender.mailSubject(data), 300) + '&body=';
+    var body = mailtoEncode(sender.mailBody(data));
+    if (head.length + body.length <= MAILTO_MAX) return head + body;
+    var note = mailtoEncode('\n\n[Message shortened. The full text is still in the ' + sender.title + ' window.]');
+    return head + encodedPrefix(sender.mailBody(data), MAILTO_MAX - head.length - note.length) + note;
+  }
+
+  function mailtoEncode(text) {
+    var crlf = String(text).replace(/\r\n|\r|\n/g, '\r\n');
+    try {
+      return encodeURIComponent(crlf);
+    } catch (e) {
+      // encodeURIComponent rejects a lone half of a surrogate pair.
+      return encodeURIComponent(crlf.replace(/[\uD800-\uDFFF]/g, '\uFFFD'));
+    }
+  }
+
+  // The encoding of the longest start of text that fits in budget
+  // characters. The cut never splits a surrogate pair.
+  function encodedPrefix(text, budget) {
+    function start(n) {
+      var code = text.charCodeAt(n - 1);
+      return text.slice(0, code >= 0xD800 && code <= 0xDBFF ? n - 1 : n);
+    }
+    var lo = 0;
+    var hi = text.length;
+    while (lo < hi) {
+      var mid = Math.ceil((lo + hi) / 2);
+      if (mailtoEncode(start(mid)).length <= budget) lo = mid;
+      else hi = mid - 1;
+    }
+    return mailtoEncode(start(lo));
   }
 
   // --- Context Menus ---
@@ -3269,8 +3508,10 @@
   }
 
   // --- Quick Launch: Show Desktop ---
+  // A message box has no taskbar button to bring it back, so it stays open.
   function showDesktop() {
     windows.forEach(function(win, id) {
+      if (win.messageBox) return;
       if (win.state === 'open' || win.state === 'maximized') {
         minimizeWindow(id);
       }
@@ -3324,7 +3565,7 @@
       '<div class="window-body" role="document"' + bodyStyle + '>' + bodyHtml + '</div>';
 
     elDesktop.appendChild(win);
-    registerWindow(id, win, { transient: !!opts.transient });
+    registerWindow(id, win, { transient: !!opts.transient, messageBox: !!opts.messageBox });
     openWindow(id);
     // A content-sized window ('auto') is pinned to its measured width: the
     // window manager saves and restores px rects across minimize.
