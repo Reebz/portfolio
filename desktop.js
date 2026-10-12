@@ -1501,6 +1501,12 @@
     }
     var speaker = el.closest('#tray-speaker');
     if (speaker) return { el: speaker, text: speaker.getAttribute('aria-pressed') === 'true' ? 'Sound on' : 'Muted' };
+    // Project icons only, since system icons carry no description. Icons stay
+    // quiet while a context menu is open so the tooltip never covers the menu.
+    var icon = el.closest('.desktop-icon[data-description]');
+    if (icon && !document.querySelector('.context-menu.open')) {
+      return { el: icon, text: icon.getAttribute('data-description') };
+    }
     return null;
   }
 
@@ -2522,6 +2528,12 @@
       // For link-type projects, store the URL on the icon for direct opening
       if (project.type === 'link' && project.url) {
         icon.setAttribute('data-url', project.url);
+      }
+
+      // The description is the icon's hover tooltip (tooltipSourceFor), the
+      // way Win98 shows a shortcut's comment.
+      if (project.description) {
+        icon.setAttribute('data-description', project.description);
       }
 
       var img = document.createElement('img');

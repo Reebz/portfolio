@@ -25,6 +25,10 @@
 
     var showTimer = null;
     var currentTarget = null;
+    // A pressed host stays quiet until the pointer leaves it, as in Win98. An
+    // icon press captures the pointer for its drag, and capture re-fires
+    // pointerover on the icon, which would bring the tooltip straight back.
+    var pressedTarget = null;
 
     function positionAndShow(targetEl, text) {
       var z = getZoom();
@@ -66,12 +70,14 @@
     document.addEventListener('pointerover', function(e) {
       var src = sourceFor(e.target);
       if (!src || !src.text) return;
-      if (currentTarget === src.el) return;
+      if (currentTarget === src.el || pressedTarget === src.el) return;
       currentTarget = src.el;
       scheduleTooltip(src.el, src.text);
     });
 
     document.addEventListener('pointerout', function(e) {
+      // Leaving the pressed host lets its tooltip show again.
+      if (pressedTarget && !(e.relatedTarget && pressedTarget.contains(e.relatedTarget))) pressedTarget = null;
       if (!currentTarget) return;
       // Ignore moves that stay inside the current target (e.g. button -> img).
       if (e.relatedTarget && currentTarget.contains(e.relatedTarget)) return;
@@ -80,7 +86,11 @@
 
     // Any press dismisses the tooltip so it never lingers over an activated
     // control (matches native Win98).
-    document.addEventListener('pointerdown', cancelTooltip);
+    document.addEventListener('pointerdown', function(e) {
+      var src = sourceFor(e.target);
+      pressedTarget = src ? src.el : null;
+      cancelTooltip();
+    });
   }
 
   window.Win98Tooltips = { setup: setup };
