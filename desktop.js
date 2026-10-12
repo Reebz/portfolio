@@ -2653,48 +2653,95 @@
           message: form.querySelector('[name="message"]').value
         };
 
-        var fetchOpts = {
+        sendForm(form.action, data).done.then(function() {
+          // A send from before a close and reopen leaves the new form alone.
+          if (myToken !== contactSubmitToken) return;
+          if (sendBtn) sendBtn.textContent = 'Message Sent!';
+          setTimeout(function() {
+            // Stale-submit guard: window was closed (and possibly reopened
+            // by now) during the success delay — leave the new instance alone.
+            if (myToken !== contactSubmitToken) return;
+            closeWindow('window-contact');
+            form.reset();
+            if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+          }, 1500);
+        }, function(reason) {
+          if (myToken !== contactSubmitToken || !sendBtn) return;
+          if (reason.kind === 'timeout') sendBtn.textContent = "Couldn't send — try again";
+          else sendBtn.textContent = reason.message || 'Send Failed - Try Again';
+          sendBtn.disabled = false;
+        });
+      });
+    }
+  }
+
+  // --- Form sends ---
+  // Contact and the Guestbook both post through sendForm. Its deadline comes
+  // from setTimeout and an AbortController, because Safari before 16 lacks
+  // AbortSignal.timeout, and a send there that never got a reply stayed on
+  // "Sending..." for good.
+  var SEND_DEADLINE_MS = 8000;
+
+  // Posts data as JSON. send.done resolves on a 2xx reply whose body has no
+  // error or errors key, and otherwise rejects with { kind, status, message },
+  // where kind is 'timeout', 'network' (a blocked request, or a browser with
+  // no fetch) or 'http'. send.abort() cancels the request and leaves done
+  // unsettled, so a cancelled send changes nothing.
+  function sendForm(url, data) {
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var settled = false;
+    var timer = null;
+    var send = {};
+    send.done = new Promise(function(resolve, reject) {
+      function finish(settle, value) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        settle(value);
+      }
+      send.abort = function() {
+        settled = true;
+        clearTimeout(timer);
+        if (controller) controller.abort();
+      };
+      timer = setTimeout(function() {
+        if (controller) controller.abort();
+        finish(reject, { kind: 'timeout' });
+      }, SEND_DEADLINE_MS);
+      try {
+        fetch(url, {
           method: 'POST',
           body: JSON.stringify(data),
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
-          }
-        };
-        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-          fetchOpts.signal = AbortSignal.timeout(8000);
-        }
-
-        fetch(form.action, fetchOpts).then(function(response) {
-          if (response.ok) {
-            if (sendBtn) sendBtn.textContent = 'Message Sent!';
-            setTimeout(function() {
-              // Stale-submit guard: window was closed (and possibly reopened
-              // by now) during the success delay — leave the new instance alone.
-              if (myToken !== contactSubmitToken) return;
-              closeWindow('window-contact');
-              form.reset();
-              if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
-            }, 1500);
-          } else {
-            response.json().then(function(body) {
-              var msg = (body.errors && body.errors.length) ? body.errors[0].message : 'Send Failed';
-              if (sendBtn) { sendBtn.textContent = msg; sendBtn.disabled = false; }
-            }).catch(function() {
-              if (sendBtn) { sendBtn.textContent = 'Send Failed - Try Again'; sendBtn.disabled = false; }
-            });
-          }
-        }).catch(function(err) {
-          if (!sendBtn) return;
-          if (err && err.name === 'TimeoutError') {
-            sendBtn.textContent = "Couldn't send — try again";
-          } else {
-            sendBtn.textContent = 'Send Failed - Try Again';
-          }
-          sendBtn.disabled = false;
+          },
+          signal: controller ? controller.signal : undefined
+        }).then(function(response) {
+          return response.text().then(function(text) {
+            var body = null;
+            try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
+            if (response.ok && !(body && (body.error || body.errors))) {
+              finish(resolve, body);
+            } else {
+              finish(reject, { kind: 'http', status: response.status, message: formspreeError(body) });
+            }
+          });
+        }).catch(function() {
+          finish(reject, { kind: 'network' });
         });
-      });
-    }
+      } catch (e) {
+        finish(reject, { kind: 'network' });
+      }
+    });
+    return send;
+  }
+
+  // Formspree's own words for a rejected send, when it gave any.
+  function formspreeError(body) {
+    if (!body) return '';
+    if (body.errors && body.errors.length && body.errors[0].message) return body.errors[0].message;
+    return typeof body.error === 'string' ? body.error : '';
   }
 
   // --- Context Menus ---

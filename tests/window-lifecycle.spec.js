@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { mockGoatCounter } = require('./_helpers');
+const { mockGoatCounter, mockFormspree } = require('./_helpers');
 
 // Stub gc.zgo.at / goatcounter.com before any spec touches the page so CI
 // never makes real analytics requests. See tests/_helpers.js for context.
@@ -341,10 +341,8 @@ test.describe('U1 — HIGH-severity bug fixes', () => {
   });
 
   test('Contact form Send button resets after closing mid-flight', async ({ page }) => {
-    // Stall the Formspree request indefinitely.
-    await page.route('https://formspree.io/**', async () => {
-      // Never call route.fulfill — leaves the fetch pending forever.
-    });
+    // Stall the Formspree request: it gets no answer.
+    await mockFormspree(page, 'hang');
 
     // Open contact form via desktop icon
     const contactIcon = page.locator('[data-window-id="window-contact"]');
@@ -554,9 +552,7 @@ test.describe('Relaunch and lifecycle regressions (review follow-ups)', () => {
   // contact form during the 1500ms post-success delay must leave the fresh
   // instance alone (no auto-close, no form.reset of the new draft).
   test('Contact form reopened during the post-success delay is not wiped', async ({ page }) => {
-    await page.route('https://formspree.io/**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
-    );
+    await mockFormspree(page, 'ok');
 
     const contactIcon = page.locator('[data-window-id="window-contact"]');
     await contactIcon.dblclick();

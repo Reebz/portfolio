@@ -1,12 +1,14 @@
 // Shared test helpers.
 //
-// Two responsibilities:
+// Three responsibilities:
 //   1. mockGoatCounter(page)   — intercept the production analytics CDN so
 //      CI doesn't hit gc.zgo.at on every PR (issue #15).
 //   2. attachConsoleGate(page) — collect console errors / page errors into
 //      an array attached to the page, with an allowlist for known noise.
 //      Specs can call assertConsoleClean(page) at the end to fail loudly
 //      on any unexpected console output (issue #14).
+//   3. mockFormspree(page)     — answer the Contact and Guestbook forms'
+//      sends locally, so no test emails Mitch.
 //
 // Adoption note (issue #15):
 // We did not rewrite every spec to import a fixture-based `test` from this
@@ -51,6 +53,63 @@ async function mockGoatCounter(page) {
       body: JSON.stringify({ count: '42,000' }),
     })
   );
+}
+
+// Bodies Formspree's AJAX endpoint answers with, per mockFormspree mode.
+const FORMSPREE_ANSWERS = {
+  ok: { status: 200, body: { next: '/thanks', ok: true } },
+  'server-error': { status: 500, body: null },
+  invalid: { status: 422, body: { errors: [{ code: 'TYPE_EMAIL', field: 'email', message: 'should be an email' }] } },
+  'error-key': { status: 200, body: { error: 'Form not found' } },
+  'rate-limited': { status: 429, body: { error: 'Too Many Requests' } },
+};
+
+/**
+ * Stub the Formspree endpoint that both forms post to. One unstubbed submit
+ * emails Mitch and spends the shared monthly allowance, so every spec that
+ * can submit a form calls this before its first submit.
+ *
+ * `mode` is the answer each request gets:
+ *   - 'ok'           200 with Formspree's success body
+ *   - 'blocked'      the request fails, as it does behind an ad blocker
+ *   - 'server-error' 500 with an empty body
+ *   - 'invalid'      422 with Formspree's error list
+ *   - 'error-key'    200 whose body carries an `error` key
+ *   - 'rate-limited' 429, Formspree's limit of 20 sends a minute
+ *   - 'hang'         no answer until release() is called
+ *
+ * Returns { requests, setMode(mode), release(mode) }. `requests` holds each
+ * request's JSON body in order, setMode changes the answer for later
+ * requests, and release answers every held request with the given mode.
+ */
+async function mockFormspree(page, mode = 'ok') {
+  const state = { mode, requests: [], held: [] };
+  // The page may abort a request first (its deadline, or a closed box), and
+  // answering an aborted request throws, so the answer swallows that error.
+  const answer = (route, m) => {
+    if (m === 'blocked') return route.abort('blockedbyclient').catch(() => {});
+    const { status, body } = FORMSPREE_ANSWERS[m];
+    return route
+      .fulfill({ status, contentType: 'application/json', body: body ? JSON.stringify(body) : '' })
+      .catch(() => {});
+  };
+  await page.route('**/formspree.io/**', (route) => {
+    state.requests.push(route.request().postDataJSON());
+    if (state.mode === 'hang') {
+      state.held.push(route);
+      return undefined;
+    }
+    return answer(route, state.mode);
+  });
+  return {
+    requests: state.requests,
+    setMode(next) {
+      state.mode = next;
+    },
+    release(next) {
+      return Promise.all(state.held.splice(0).map((route) => answer(route, next)));
+    },
+  };
 }
 
 // Console messages that are KNOWN-SAFE to ignore. Add an entry here (with a
@@ -133,6 +192,7 @@ function assertConsoleClean(gate, options) {
 
 module.exports = {
   mockGoatCounter,
+  mockFormspree,
   attachConsoleGate,
   assertConsoleClean,
   CONSOLE_ALLOWLIST,
