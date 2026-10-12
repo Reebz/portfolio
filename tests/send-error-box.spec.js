@@ -57,6 +57,8 @@ test.describe('Failed-send box on the desktop', () => {
   });
 
   test('AE5: a blocked send opens the box with Retry focused, and Cancel leaves the form as typed', async ({ page }) => {
+    // A failed send often means no network, so the icon must not need a fetch.
+    await page.route('**/img/icons/critical-32.png', (route) => route.abort());
     await failedSend(page);
 
     await expect(page.getByRole('alertdialog', { name: 'Contact' })).toBeVisible();
@@ -65,7 +67,9 @@ test.describe('Failed-send box on the desktop', () => {
     await expect(boxButton(page, 'Retry')).toBeFocused();
     await page.waitForTimeout(300);
     await expect(boxButton(page, 'Retry')).toBeFocused();
-    await expect(box(page).locator('img[src="img/icons/critical-32.png"]')).toBeVisible();
+    const icon = box(page).locator('.send-error-icon');
+    await expect(icon).toBeVisible();
+    expect(await icon.evaluate((img) => img.complete && img.naturalWidth)).toBe(32);
     await expect(sendButton(page)).toHaveText('Send');
     await expect(sendButton(page)).toBeEnabled();
     await expect(mailLink(page)).toHaveAttribute('href', `mailto:${MAIL}?subject=Hi&body=Love%20the%20Minesweeper!`);

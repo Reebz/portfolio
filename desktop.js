@@ -2972,10 +2972,13 @@
   // The subject keeps to this many encoded characters, so the body always has room.
   var MAILTO_SUBJECT_MAX = 300;
   var sendError = null; // the open box: { sender, retry, quiet }
+  // The bytes of img/icons/critical-32.png, inlined because the box often
+  // opens when the network is down and the icon could not be fetched.
+  var CRITICAL_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAsklEQVR42u2X0QrAIAhF+/T+vL0sECnzpuaCCb4570lXWSm/4dYWHivaFh4BoxIWQM4Ke4G4iFsg3MQZRI44hai1Nrz03bRik/iigJATaiAWsXsAWghFTAcYQdhWB1RpVgWsv1QIaZEZgAuC4j4AIwiH7XgRQGoLUn/C4G2YfhB94yjOvozSr+PQgUTq/ZGRTCseMpSi4m5jOVL2ob0fbz1MzOIUgiQTncX6Gk0u+VUv3QfWxJJ1ZChILwAAAABJRU5ErkJggg==';
 
   var SEND_ERROR_BODY =
     '<div class="send-error-layout">' +
-      '<img src="img/icons/critical-32.png" alt="" class="send-error-icon" width="32" height="32">' +
+      '<img src="' + CRITICAL_ICON + '" alt="" class="send-error-icon" width="32" height="32">' +
       '<div class="send-error-text" id="send-error-desc">' +
         '<p class="send-error-headline"></p>' +
         '<p class="send-error-reason"></p>' +
