@@ -10,6 +10,9 @@ const { test, expect } = require('@playwright/test');
 const { bootedDesktop, mockFormspree } = require('./_helpers');
 
 const APPROVAL_NOTE = 'Your entry will appear after the webmaster approves it.';
+// The page's clock is set to this day, whose one-digit month and day show
+// the date's zero padding whatever day the suite runs.
+const SIGNED_ON = '03/05/2026';
 
 async function openGuestbook(page) {
   await page.evaluate(() => window.__win98.open('window-guestbook'));
@@ -34,18 +37,13 @@ function box(page) {
   return page.locator('#window-send-error');
 }
 
-// The visitor's date as the page formats it, MM/DD/YYYY.
-function pageDate(page) {
-  return page.evaluate(() => {
-    const d = new Date();
-    const two = (n) => String(n).padStart(2, '0');
-    return `${two(d.getMonth() + 1)}/${two(d.getDate())}/${d.getFullYear()}`;
-  });
-}
-
 test.describe('Guestbook signing form', () => {
   test.beforeEach(async ({ page }) => {
-    await page.clock.install();
+    await page.clock.install({ time: new Date('2026-03-05T12:00:00') });
+    // The committed guestbook.json grows as Mitch publishes, so these specs
+    // answer it with no entries.
+    await page.route('**/guestbook.json', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
     await bootedDesktop(page);
   });
 
@@ -61,9 +59,8 @@ test.describe('Guestbook signing form', () => {
       subject: 'Guestbook entry',
       name: 'Sam',
       message: 'Love the Minesweeper!',
-      date: await pageDate(page),
+      date: SIGNED_ON,
     });
-    expect(sent.date).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
     await expect(page.locator('#guestbook-name')).toHaveValue('');
     await expect(page.locator('#guestbook-message')).toHaveValue('');
     await expect(signButton(page)).toHaveText('Sign Guestbook');
@@ -115,7 +112,7 @@ test.describe('Guestbook signing form', () => {
     const href = await box(page).getByRole('link', { name: 'Open in Mail App' }).getAttribute('href');
     const params = new URL(href).searchParams;
     expect(params.get('subject')).toBe('Guestbook entry');
-    expect(params.get('body')).toBe(`Name: Sam\r\nDate: ${await pageDate(page)}\r\n\r\nLove the Minesweeper!`);
+    expect(params.get('body')).toBe(`Name: Sam\r\nDate: ${SIGNED_ON}\r\n\r\nLove the Minesweeper!`);
     await expect(signButton(page)).toHaveText('Sign Guestbook');
     await expect(page.locator('#guestbook-message')).toHaveValue('Love the Minesweeper!');
   });
@@ -160,6 +157,55 @@ test.describe('Guestbook signing form', () => {
     await expect(approvalNote(page)).toHaveText(APPROVAL_NOTE);
     await expect(page.locator('#guestbook-name')).toHaveValue('');
     await expect(page.locator('#guestbook-message')).toHaveValue('');
+  });
+
+  test('Retry after the message was edited sends the copy that failed and keeps the edit', async ({ page }) => {
+    const formspree = await mockFormspree(page, 'blocked');
+    await fillGuestbook(page);
+    await signButton(page).click();
+    await expect(box(page)).toBeVisible();
+
+    await page.fill('#guestbook-message', 'Love the Minesweeper! And Napster.');
+    formspree.setMode('ok');
+    await box(page).getByRole('button', { name: 'Retry', exact: true }).click();
+
+    await expect(box(page)).toHaveCount(0);
+    expect(formspree.requests[1].message).toBe('Love the Minesweeper!');
+    await expect(page.locator('#guestbook-message')).toHaveValue('Love the Minesweeper! And Napster.');
+    await expect(approvalNote(page)).toHaveText('');
+  });
+
+  test('an edit typed while the entry is signing stays, and the approval note still shows', async ({ page }) => {
+    const formspree = await mockFormspree(page, 'hang');
+    await fillGuestbook(page);
+    await signButton(page).click();
+    await expect(signButton(page)).toHaveText('Signing...');
+
+    await page.fill('#guestbook-message', 'Love the Minesweeper! And Napster.');
+    await formspree.release('ok');
+
+    await expect(approvalNote(page)).toHaveText(APPROVAL_NOTE);
+    await expect(page.locator('#guestbook-name')).toHaveValue('Sam');
+    await expect(page.locator('#guestbook-message')).toHaveValue('Love the Minesweeper! And Napster.');
+    await expect(signButton(page)).toHaveText('Sign Guestbook');
+    await expect(signButton(page)).toBeEnabled();
+  });
+
+  test('a newer signing replaces one still in flight, so the older deadline opens no box', async ({ page }) => {
+    await mockFormspree(page, 'hang');
+    await fillGuestbook(page);
+    await signButton(page).click();
+    await page.clock.fastForward(5000);
+    await page.locator('#window-guestbook .title-bar [aria-label="Close"]').click();
+    await openGuestbook(page);
+    await signButton(page).click();
+    await expect(signButton(page)).toHaveText('Signing...');
+
+    // The first signing's deadline passes here; the newer one's is 5 seconds away.
+    await page.clock.fastForward(3000);
+    await page.waitForTimeout(100);
+    await expect(box(page)).toHaveCount(0);
+    await expect(signButton(page)).toHaveText('Signing...');
   });
 
   test('after one signing, a failed second signing opens the box with no approval note behind it', async ({ page }) => {

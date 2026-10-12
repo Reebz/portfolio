@@ -180,6 +180,24 @@ test.describe('Failed-send box on the desktop', () => {
     await expect(page.locator('#contact-message')).toHaveValue('Love the Minesweeper! And Napster.');
   });
 
+  test('a Retry that succeeds after the visitor moved into Contact leaves focus and the edit there', async ({ page }) => {
+    const formspree = await failedSend(page);
+    formspree.setMode('hang');
+    await boxButton(page, 'Retry').click();
+    await expect(boxButton(page, 'Retrying...')).toBeVisible();
+
+    // A press on Contact behind the box activates it, as a click there would.
+    await page.locator('#contact-message').dispatchEvent('pointerdown');
+    await page.fill('#contact-message', 'Love the Minesweeper! And Napster.');
+    await formspree.release('ok');
+
+    await expect(box(page)).toHaveCount(0);
+    await page.waitForTimeout(100);
+    await expect(page.locator('#contact-message')).toBeFocused();
+    await expect(page.locator('#contact-message')).toHaveValue('Love the Minesweeper! And Napster.');
+    expect(formspree.requests).toHaveLength(2);
+  });
+
   test('closing the box during a retry aborts it, and a late 2xx changes nothing', async ({ page }) => {
     const formspree = await failedSend(page);
     formspree.setMode('hang');

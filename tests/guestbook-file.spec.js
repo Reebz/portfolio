@@ -4,13 +4,15 @@
 // "Publishing a guestbook entry" in the README). The page silently skips an
 // entry it cannot show and ignores a file it cannot parse, so this check
 // fails loudly instead: on invalid JSON, or on any entry the page would skip.
-// The rules mirror validGuestbookEntries in desktop.js.
+// The rules mirror validGuestbookEntries in desktop.js, and a second check
+// has the page itself show the file, so a drift between the two still fails.
 //
-// Runs under the desktop project and reads the file directly, with no
-// browser.
+// Runs under the desktop project. The first check reads the file directly,
+// with no browser.
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { bootedDesktop } = require('./_helpers');
 
 const FILE = path.join(__dirname, '..', 'guestbook.json');
 const DATE = /^\d{2}\/\d{2}\/\d{4}$/;
@@ -38,4 +40,13 @@ test('guestbook.json is a JSON list whose every entry the page will show', () =>
     .filter((p) => p.reason)
     .map((p) => `entry ${p.i + 1} ${p.reason}`);
   expect(problems).toEqual([]);
+});
+
+test('the Guestbook shows every entry in guestbook.json', async ({ page }) => {
+  const entries = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+  await bootedDesktop(page);
+  const loaded = page.waitForResponse((response) => response.url().endsWith('/guestbook.json'));
+  await page.evaluate(() => window.__win98.open('window-guestbook'));
+  await loaded;
+  await expect(page.locator('#window-guestbook .guestbook-published')).toHaveCount(entries.length);
 });

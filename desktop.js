@@ -2643,6 +2643,9 @@
   function initContactForm() {
     var form = document.getElementById('contact-form');
     if (form) {
+      // The send in flight. A newer send from this form replaces it, so it
+      // is aborted and can neither reset the form nor open the box.
+      var inFlight = null;
       form.addEventListener('submit', function(e) {
         e.preventDefault();
 
@@ -2667,7 +2670,9 @@
         var myToken = ++contactSubmitToken;
         var data = contactData(form);
 
-        sendForm(formEndpoint(), data).done.then(function() {
+        if (inFlight) inFlight.abort();
+        inFlight = sendForm(formEndpoint(), data);
+        inFlight.done.then(function() {
           // A send from before a close and reopen leaves the new form alone.
           if (myToken !== contactSubmitToken) return;
           contactSent(form, myToken);
@@ -2737,6 +2742,8 @@
   function initGuestbookForm() {
     var form = document.getElementById('guestbook-form');
     if (!form) return;
+    // The signing in flight, which a newer signing aborts, as on Contact.
+    var inFlight = null;
     form.addEventListener('submit', function(e) {
       e.preventDefault();
       if (!form.checkValidity()) {
@@ -2766,9 +2773,18 @@
         date: guestbookDate(new Date())
       };
 
-      sendForm(formEndpoint(), data).done.then(function() {
+      if (inFlight) inFlight.abort();
+      inFlight = sendForm(formEndpoint(), data);
+      inFlight.done.then(function() {
         if (myToken !== guestbookSubmitToken) return;
-        guestbookSigned(form);
+        // An edit typed while the entry was signing stays in the form.
+        if (guestbookHolds(form, data)) {
+          guestbookSigned(form);
+        } else {
+          signBtn.textContent = 'Sign Guestbook';
+          signBtn.disabled = false;
+          form.querySelector('.guestbook-status').textContent = GUESTBOOK_APPROVAL_NOTE;
+        }
       }, function(reason) {
         if (myToken === guestbookSubmitToken) {
           signBtn.textContent = 'Sign Guestbook';
@@ -2786,6 +2802,12 @@
     signBtn.textContent = 'Sign Guestbook';
     signBtn.disabled = false;
     form.querySelector('.guestbook-status').textContent = GUESTBOOK_APPROVAL_NOTE;
+  }
+
+  // True while the form still holds data, the copy that was sent.
+  function guestbookHolds(form, data) {
+    return form.querySelector('#guestbook-name').value === data.name &&
+      form.querySelector('#guestbook-message').value === data.message;
   }
 
   // The visitor's own date as MM/DD/YYYY, the 1999 entries' format, so
@@ -2806,10 +2828,7 @@
     mailBody: function(data) { return 'Name: ' + data.name + '\nDate: ' + data.date + '\n\n' + data.message; },
     retried: function(data) {
       var form = document.getElementById('guestbook-form');
-      if (!form) return;
-      if (form.querySelector('#guestbook-name').value !== data.name ||
-          form.querySelector('#guestbook-message').value !== data.message) return;
-      guestbookSigned(form);
+      if (form && guestbookHolds(form, data)) guestbookSigned(form);
     }
   };
 
@@ -3055,9 +3074,13 @@
     registerCleanup(SEND_ERROR_ID, function() {
       if (state.retry) state.retry.abort();
       if (sendError === state) sendError = null;
+      // Focus goes back to the form only from the box itself, so a Retry
+      // that succeeds never pulls it out of a field the visitor moved to.
+      var active = document.activeElement;
+      var focusInBox = !active || active === document.body || box.contains(active);
       // closeWindow focuses the next window after its cleanups run, so the
       // hand-back waits until it has finished.
-      if (!state.quiet) Promise.resolve().then(function() { returnToSender(sender); });
+      if (!state.quiet && focusInBox) Promise.resolve().then(function() { returnToSender(sender); });
     });
 
     // Win98 centers a message box; it opens with Retry, its default button.

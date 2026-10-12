@@ -3,7 +3,8 @@
 // Every send has an 8-second deadline that fires on every browser, including
 // Safari before 16, which lacks AbortSignal.timeout, and under Playwright's
 // fake clock. A reply or deadline that lands after Contact was closed and
-// reopened leaves the reopened form alone.
+// reopened leaves the reopened form alone, and a newer send aborts one
+// still in flight.
 const { test, expect } = require('@playwright/test');
 const { bootedDesktop, mockFormspree } = require('./_helpers');
 
@@ -90,6 +91,23 @@ test.describe('Contact send deadline and late replies', () => {
     await expect(sendButton(page)).toHaveText('Send');
     await expect(sendButton(page)).toBeEnabled();
     await expect(page.locator('#contact-message')).toHaveValue('Fresh draft');
+  });
+
+  test('a newer send replaces one still in flight, so the older deadline opens no box', async ({ page }) => {
+    await mockFormspree(page, 'hang');
+    await fillContact(page);
+    await sendButton(page).click();
+    await page.clock.fastForward(5000);
+    await closeAndReopenContact(page);
+    await sendButton(page).click();
+    await expect(sendButton(page)).toHaveText('Sending...');
+
+    // The first send's deadline passes here; the newer send's is 5 seconds away.
+    await page.clock.fastForward(3000);
+    await page.waitForTimeout(100);
+    await expect(page.locator('#window-send-error')).toHaveCount(0);
+    await expect(sendButton(page)).toHaveText('Sending...');
+    await expect(sendButton(page)).toBeDisabled();
   });
 
   test('a deadline that fires after Contact was closed and reopened changes nothing', async ({ page }) => {
