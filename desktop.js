@@ -3902,10 +3902,15 @@
       // One way. A key handler later in this same keydown (Ctrl+F6 switching
       // windows) must not write an address back before the reload.
       isRebooting = true;
-      // Strip any open-window hash (openWindow -> updateHash sets one) before
+      // Strip any open-window hash (bringToFront -> updateHash sets one) before
       // reloading. boot.js skips the sequence when a hash is present, so without
       // this the reload would drop straight back to the desktop.
-      history.replaceState(null, '', window.location.pathname);
+      try {
+        history.replaceState(null, '', window.location.pathname);
+      } catch (e) {
+        // Past a browser's replaceState rate limit the strip fails. The reload
+        // still runs; it only skips the boot replay.
+      }
       location.reload();
     }
     // Defer binding so the triggering keystroke (e.g. Enter typing VAULT in the

@@ -156,4 +156,36 @@ test.describe('Back button and window addresses', () => {
     await expect(page.locator('#boot-overlay')).toBeVisible({ timeout: 6000 });
     expect(await page.evaluate(() => sessionStorage.getItem('unload-address'))).toMatch(/^[^#]+$/);
   });
+
+  // WebKit throws a SecurityError once replaceState passes its rate limit.
+  async function refuseAddressWrites(page) {
+    await page.evaluate(() => {
+      history.replaceState = () => { throw new DOMException('rate limited', 'SecurityError'); };
+    });
+  }
+
+  test('a refused address write still opens and closes windows', async ({ page }) => {
+    await arriveFromAnotherPage(page);
+    await refuseAddressWrites(page);
+
+    await openWindow(page, 'window-about');
+    await expect(page.locator('.taskbar-window-btn[data-window-id="window-about"]')).toBeVisible();
+    await page.locator('#window-about .title-bar [aria-label="Close"]').click();
+    await expect(page.locator('#window-about')).toHaveAttribute('data-state', 'closed');
+  });
+
+  test('a BSOD reboot still reloads when the address write is refused', async ({ page }) => {
+    await arriveFromAnotherPage(page);
+    await openWindow(page, 'window-about');
+    await refuseAddressWrites(page);
+
+    await page.evaluate(() => window.__showBsod());
+    await expect(page.locator('#bsod-overlay')).toBeVisible();
+    // The reboot listeners bind after a 60 ms defer.
+    await page.waitForTimeout(120);
+    const reloaded = page.waitForEvent('load', { timeout: 5000 });
+    await page.keyboard.press('Enter');
+    await reloaded;
+    await expect(page.locator('#bsod-overlay')).toBeHidden();
+  });
 });

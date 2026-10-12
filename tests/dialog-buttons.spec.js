@@ -34,6 +34,8 @@ test.describe('Shut Down and Log Off dialog buttons', () => {
       await dialog.locator(c.selector).click();
       await expect(dialog).toHaveAttribute('data-state', 'closed');
       await expect(dialog).toBeHidden();
+      // Shut Down dims the whole screen with a layer that blocks clicks.
+      await expect(page.locator('html')).not.toHaveClass(/shutdown-dim/);
     });
   }
 });
