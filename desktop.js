@@ -268,6 +268,8 @@
     }
 
     activeWindowId = windowId;
+    // Every focus change lands here, so the address follows the top window.
+    updateHash(windowId);
   }
 
 
@@ -442,6 +444,10 @@
     if (activeWindowId === id) {
       activeWindowId = null;
       focusNextWindow();
+      // Keyboard focus follows the next window, as the old hash echo did by
+      // reopening it about 100 ms after the close.
+      var next = activeWindowId && windows.get(activeWindowId);
+      if (next && next.el) next.el.focus({ preventScroll: true });
     }
 
     updateHash(activeWindowId);
@@ -493,6 +499,8 @@
       if (activeWindowId === id) {
         activeWindowId = null;
         focusNextWindow();
+        // Clears the address when no visible window is left to name.
+        updateHash(activeWindowId);
       }
       var minHook = windowMinimizeHooks[id];
       if (minHook) minHook();
@@ -964,15 +972,25 @@
   }, true);
 
   // --- Hash Routing ---
+  // The address names the top open window, rewritten in place so window
+  // changes add no Back steps and fire no hashchange. Nothing is written
+  // while an address is being handled or waits in the hashchange debounce
+  // (a focus change would overwrite a typed address before it is read), or
+  // once a BSOD reboot has stripped the address for its reload.
   var isHandlingHash = false;
+  var hashDebounce = null;
+  var isRebooting = false;
 
   function updateHash(windowId) {
-    if (isHandlingHash) return;
-    if (windowId) {
-      window.location.hash = '#' + windowId;
-    } else {
-      // Remove hash without scrolling
-      history.replaceState(null, '', window.location.pathname);
+    if (isRebooting || isHandlingHash || hashDebounce) return;
+    var target = windowId ? '#' + windowId : '';
+    if (window.location.hash === target) return;
+    try {
+      // The no-window address drops the hash without scrolling.
+      history.replaceState(null, '', windowId ? target : window.location.pathname);
+    } catch (e) {
+      // WebKit throws past 100 calls in 10 seconds and Firefox past 200.
+      // The address then stays stale, and the caller's window work still runs.
     }
   }
 
@@ -1032,12 +1050,13 @@
     isHandlingHash = false;
   }
 
-  var hashDebounce = null;
   window.addEventListener('hashchange', function() {
     if (hashDebounce) clearTimeout(hashDebounce);
     hashDebounce = setTimeout(function() {
       hashDebounce = null;
-      applyHashState();
+      // Back onto an entry with no fragment names the top window again.
+      if (!window.location.hash.slice(1)) updateHash(activeWindowId);
+      else applyHashState();
     }, 100);
   });
 
@@ -3874,6 +3893,9 @@
       document.removeEventListener('pointerdown', reboot, true);
       if (rebootTimer) { clearTimeout(rebootTimer); rebootTimer = null; }
       safeRemove('sessionStorage', 'booted');
+      // One way. A key handler later in this same keydown (Ctrl+F6 switching
+      // windows) must not write an address back before the reload.
+      isRebooting = true;
       // Strip any open-window hash (openWindow -> updateHash sets one) before
       // reloading. boot.js skips the sequence when a hash is present, so without
       // this the reload would drop straight back to the desktop.
