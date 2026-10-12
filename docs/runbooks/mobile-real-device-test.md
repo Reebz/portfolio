@@ -77,9 +77,9 @@ Walk these in order on each device. If any step fails, see "What if a step fails
 
 ### 8. Form input
 
-**Action.** On iPhone, open Contact (or Guestbook). Tap an input field to focus it. Observe the viewport when the keyboard opens.
+**Action.** On iPhone, then on iPad, open Contact (or Guestbook). Tap an input field to focus it. Observe the viewport when the keyboard opens.
 
-**Expected.** The viewport does NOT zoom in on the input. The 16px font-size guard prevents iOS Safari's auto-zoom-to-input behavior.
+**Expected.** On neither device does the viewport zoom in on the input. On iPhone, the 16px font-size guard prevents iOS Safari's auto-zoom-to-input behavior.
 
 **Automated coverage.** [`tests/mobile-input-no-zoom.spec.js`](../../tests/mobile-input-no-zoom.spec.js).
 
@@ -122,6 +122,22 @@ Walk these in order on each device. If any step fails, see "What if a step fails
 **Expected.** With sound on, dialog opens play a short Win98-style ding. Tapping the tray speaker mutes it (icon shows the red mute slash) and silences all sounds; the choice persists across a reload. This is the one check automation cannot make — Playwright asserts the toggle state and persistence, never the audible output.
 
 **Automated coverage.** [`tests/sounds.spec.js`](../../tests/sounds.spec.js) (toggle state + persistence only; audible output is manual).
+
+### 14. Failed send (iPhone and iPad)
+
+**Action.** On iPhone, open Contact and fill in From and the message. Turn on airplane mode, then tap Send and wait up to 8 seconds. In the error box that opens, tap Open in Mail App, look at the draft, and delete it without sending. Back in Safari, tap Copy Address, then tap Cancel. Turn airplane mode off. Repeat on iPad.
+
+**Expected.** An error box titled "Contact" opens on top of the Contact window, with a red error icon, a reason line, and the buttons Retry, Open in Mail App, Copy Address and Cancel, all readable and on screen. The mail draft is addressed to mitch@ribar.ai and carries the typed subject and message. Copy Address reads "Copied!", or leaves the address selected. Cancel closes only the box, and the Contact form still holds everything typed. No field zooms. Airplane mode keeps the send from reaching Formspree, so this step emails nobody.
+
+**Automated coverage.** [`tests/send-error-box.spec.js`](../../tests/send-error-box.spec.js), [`tests/mobile-send-error-box.spec.js`](../../tests/mobile-send-error-box.spec.js). Manual is the backstop for the real mail app hand-off and the real clipboard.
+
+### 15. Guestbook signing with a password manager (iPhone, after deploy)
+
+**Action.** On iPhone, with your password manager's autofill turned on, open the Guestbook. Tap the name field and accept the password manager's fill offer if it makes one. Type a short message and tap Sign Guestbook. This is the one live signing, so it really sends.
+
+**Expected.** The fields clear and "Your entry will appear after the webmaster approves it." shows. An email with the subject "Guestbook entry" and the name, date and message arrives. The hidden trap field cannot be seen, so the email is the proof that the password manager left it empty: a filled trap sends nothing.
+
+**Automated coverage.** [`tests/guestbook-form.spec.js`](../../tests/guestbook-form.spec.js) covers a filled trap. Manual is the backstop for real password managers.
 
 ## What if a step fails
 

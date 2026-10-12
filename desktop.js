@@ -95,7 +95,7 @@
   var VALID_WINDOWS = new Set();
 
   // --- State ---
-  var windows = new Map(); // id -> { state, prevRect, el, taskbarBtn, transient }
+  var windows = new Map(); // id -> { state, prevRect, el, taskbarBtn, transient, messageBox }
   var zCounter = 10;
   var activeWindowId = null;
   var cascadeIndex = 0;
@@ -201,9 +201,14 @@
   // time and only mutates state if its captured value still matches —
   // protects against mid-flight close/reopen wiping a fresh draft.
   var contactSubmitToken = 0;
+  // The same guard for the Guestbook's signing form.
+  var guestbookSubmitToken = 0;
 
   // Single source of truth for registering a window with both the routing whitelist
   // and the lifecycle map. Every window-creation path flows through this.
+  // opts.messageBox marks a Win98 message box, which belongs to another
+  // window: it gets no taskbar button, no opened/closed announcement, and
+  // Show Desktop leaves it alone.
   function registerWindow(id, el, opts) {
     opts = opts || {};
     VALID_WINDOWS.add(id);
@@ -223,6 +228,7 @@
       el: el,
       taskbarBtn: null,
       transient: !!opts.transient,
+      messageBox: !!opts.messageBox,
     });
   }
 
@@ -280,7 +286,8 @@
     'window-shutdown': 1,
     'window-logoff': 1,
     'window-run-dialog': 1,
-    'window-cavaro': 1
+    'window-cavaro': 1,
+    'window-send-error': 1
   };
 
   // On portrait phones these resizable app windows open maximized (filling
@@ -366,7 +373,7 @@
     }
 
     // Create taskbar button
-    createTaskbarButton(id, win);
+    if (!win.messageBox) createTaskbarButton(id, win);
 
     var openHook = windowOpenHooks[id];
     if (openHook) openHook();
@@ -374,7 +381,9 @@
     // Dialog-style windows ding on open (no-op when sound is muted).
     if (DIALOG_SOUND_IDS[id] && window.Sounds) window.Sounds.playError();
 
-    announce(getTitleText(win.el) + ' opened');
+    // A message box carries its owner's title, so "Contact opened" would
+    // be wrong; its alertdialog role announces it instead.
+    if (!win.messageBox) announce(getTitleText(win.el) + ' opened');
   }
 
   function closeWindow(id) {
@@ -407,9 +416,10 @@
     // Stop analogue clock if closing the clock window
     if (id === 'window-clock') stopAnalogueClock();
 
-    // Bump the contact-submit token so any in-flight fetch resolution that
+    // Bump the form's submit token so any in-flight fetch resolution that
     // tries to auto-close/reset the form becomes a no-op for the new instance.
     if (id === 'window-contact') contactSubmitToken++;
+    if (id === 'window-guestbook') guestbookSubmitToken++;
 
     // Reset help-book render guard so the next launch can re-render cleanly.
     if (id === 'window-help-book') helpBookRendered = false;
@@ -430,6 +440,13 @@
       var sendBtn = win.el.querySelector('button[type="submit"]');
       if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
     }
+    // The Guestbook's sign button resets the same way, and its approval note goes.
+    if (id === 'window-guestbook') {
+      var signBtn = win.el.querySelector('#guestbook-form button[type="submit"]');
+      if (signBtn) { signBtn.textContent = 'Sign Guestbook'; signBtn.disabled = false; }
+      var approvalNote = win.el.querySelector('#guestbook-form .guestbook-status');
+      if (approvalNote) approvalNote.textContent = '';
+    }
 
     // Remove taskbar button
     if (win.taskbarBtn) {
@@ -447,7 +464,7 @@
     }
 
     updateHash(activeWindowId);
-    announce(getTitleText(win.el) + ' closed');
+    if (!win.messageBox) announce(getTitleText(win.el) + ' closed');
 
     // Transient windows (e.g. Notepad — one DOM node per launch) get fully torn down
     // so the DOM and the windows registry don't accumulate forever.
@@ -2626,6 +2643,9 @@
   function initContactForm() {
     var form = document.getElementById('contact-form');
     if (form) {
+      // The send in flight. A newer send from this form replaces it, so it
+      // is aborted and can neither reset the form nor open the box.
+      var inFlight = null;
       form.addEventListener('submit', function(e) {
         e.preventDefault();
 
@@ -2634,6 +2654,9 @@
           form.reportValidity();
           return;
         }
+
+        // This send replaces any earlier failure, so its box closes first.
+        dismissSendError(CONTACT_SENDER);
 
         var sendBtn = form.querySelector('button[type="submit"]');
         if (sendBtn) {
@@ -2645,56 +2668,518 @@
         // the token, so a user who closes-and-reopens the form mid-flight
         // gets a fresh draft instead of an auto-reset 1.5s after success.
         var myToken = ++contactSubmitToken;
+        var data = contactData(form);
 
-        // Build JSON body — Formspree recommends JSON for AJAX
-        var data = {
-          email: form.querySelector('[name="email"]').value,
-          _subject: form.querySelector('[name="_subject"]').value,
-          message: form.querySelector('[name="message"]').value
-        };
+        if (inFlight) inFlight.abort();
+        inFlight = sendForm(formEndpoint(), data);
+        inFlight.done.then(function() {
+          // A send from before a close and reopen leaves the new form alone.
+          if (myToken !== contactSubmitToken) return;
+          contactSent(form, myToken);
+        }, function(reason) {
+          // Only the current send resets the button, but a stale failure
+          // still opens the box, so a visitor who closed Contact learns the
+          // send failed and keeps the other ways to reach Mitch.
+          if (myToken === contactSubmitToken && sendBtn) {
+            sendBtn.textContent = 'Send';
+            sendBtn.disabled = false;
+          }
+          showSendError(CONTACT_SENDER, data, reason);
+        });
+      });
+    }
+  }
 
-        var fetchOpts = {
+  // Contact's fields, as sent to Formspree.
+  function contactData(form) {
+    return {
+      email: form.querySelector('[name="email"]').value,
+      _subject: form.querySelector('[name="_subject"]').value,
+      message: form.querySelector('[name="message"]').value
+    };
+  }
+
+  // Contact's success state: "Message Sent!", then 1.5 seconds later the
+  // window closes and the form clears, unless a close or a newer send has
+  // bumped the token by then.
+  function contactSent(form, myToken) {
+    var sendBtn = form.querySelector('button[type="submit"]');
+    if (sendBtn) { sendBtn.textContent = 'Message Sent!'; sendBtn.disabled = true; }
+    setTimeout(function() {
+      if (myToken !== contactSubmitToken) return;
+      closeWindow('window-contact');
+      form.reset();
+      if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
+    }, 1500);
+  }
+
+  // What the failed-send box needs from Contact. mailSubject and mailBody
+  // build the mail link from the copy that failed. retried runs Contact's
+  // own success state after a Retry, but only while the form still holds
+  // that copy, so an edit made behind the box is never cleared.
+  var CONTACT_SENDER = {
+    windowId: 'window-contact',
+    title: 'Contact',
+    noun: 'message',
+    button: function() { return document.querySelector('#contact-form button[type="submit"]'); },
+    mailSubject: function(data) { return data._subject || 'Hello from your portfolio!'; },
+    mailBody: function(data) { return data.message; },
+    retried: function(data) {
+      var form = document.getElementById('contact-form');
+      if (!form) return;
+      var now = contactData(form);
+      if (now.email !== data.email || now._subject !== data._subject || now.message !== data.message) return;
+      contactSent(form, ++contactSubmitToken);
+    }
+  };
+
+  // --- Guestbook signing form ---
+  // A signing goes to Mitch's inbox through the Contact form's endpoint,
+  // marked with the subject "Guestbook entry". Nothing shows on the page
+  // until he publishes it, so success only clears the form and says so.
+  var GUESTBOOK_APPROVAL_NOTE = 'Your entry will appear after the webmaster approves it.';
+
+  function initGuestbookForm() {
+    var form = document.getElementById('guestbook-form');
+    if (!form) return;
+    // The signing in flight, which a newer signing aborts, as on Contact.
+    var inFlight = null;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      // People never see the trap, so a filled one means a bot: it gets
+      // the normal success state, and nothing is sent.
+      if (form.querySelector('[name="_gotcha"]').value) {
+        guestbookSigned(form);
+        return;
+      }
+
+      // This signing replaces any earlier failure, so its box closes first,
+      // and an approval note from an earlier signing goes.
+      dismissSendError(GUESTBOOK_SENDER);
+      form.querySelector('.guestbook-status').textContent = '';
+      var signBtn = form.querySelector('button[type="submit"]');
+      signBtn.textContent = 'Signing...';
+      signBtn.disabled = true;
+
+      var myToken = ++guestbookSubmitToken;
+      var data = {
+        subject: 'Guestbook entry',
+        name: form.querySelector('#guestbook-name').value,
+        message: form.querySelector('#guestbook-message').value,
+        date: guestbookDate(new Date())
+      };
+
+      if (inFlight) inFlight.abort();
+      inFlight = sendForm(formEndpoint(), data);
+      inFlight.done.then(function() {
+        if (myToken !== guestbookSubmitToken) return;
+        // An edit typed while the entry was signing stays in the form.
+        if (guestbookHolds(form, data)) {
+          guestbookSigned(form);
+        } else {
+          signBtn.textContent = 'Sign Guestbook';
+          signBtn.disabled = false;
+          form.querySelector('.guestbook-status').textContent = GUESTBOOK_APPROVAL_NOTE;
+        }
+      }, function(reason) {
+        if (myToken === guestbookSubmitToken) {
+          signBtn.textContent = 'Sign Guestbook';
+          signBtn.disabled = false;
+        }
+        showSendError(GUESTBOOK_SENDER, data, reason);
+      });
+    });
+  }
+
+  // The Guestbook's success state: the fields clear and the approval note shows.
+  function guestbookSigned(form) {
+    form.reset();
+    var signBtn = form.querySelector('button[type="submit"]');
+    signBtn.textContent = 'Sign Guestbook';
+    signBtn.disabled = false;
+    form.querySelector('.guestbook-status').textContent = GUESTBOOK_APPROVAL_NOTE;
+  }
+
+  // True while the form still holds data, the copy that was sent.
+  function guestbookHolds(form, data) {
+    return form.querySelector('#guestbook-name').value === data.name &&
+      form.querySelector('#guestbook-message').value === data.message;
+  }
+
+  // The visitor's own date as MM/DD/YYYY, the 1999 entries' format, so
+  // publishing copies it as is.
+  function guestbookDate(d) {
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    return two(d.getMonth() + 1) + '/' + two(d.getDate()) + '/' + d.getFullYear();
+  }
+
+  // What the failed-send box needs from the Guestbook. retried runs the
+  // success state only while the form still holds the copy that failed.
+  var GUESTBOOK_SENDER = {
+    windowId: 'window-guestbook',
+    title: 'Guestbook',
+    noun: 'guestbook entry',
+    button: function() { return document.querySelector('#guestbook-form button[type="submit"]'); },
+    mailSubject: function(data) { return data.subject; },
+    mailBody: function(data) { return 'Name: ' + data.name + '\nDate: ' + data.date + '\n\n' + data.message; },
+    retried: function(data) {
+      var form = document.getElementById('guestbook-form');
+      if (form && guestbookHolds(form, data)) guestbookSigned(form);
+    }
+  };
+
+  // --- Published guestbook entries ---
+  // Mitch publishes approved entries in guestbook.json, a list of
+  // { name, date, message }. The first Guestbook open loads the file and
+  // shows its valid entries above the 1999 ones, newest first, as plain
+  // text. A failed load leaves only the 1999 entries, logs nothing (the
+  // console-error gate opens the Guestbook), and the next open tries again.
+  // A successful load is kept, so the entries go in once per page load.
+  var guestbookLoad = null;
+  var GUESTBOOK_DATE_FORMAT = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+
+  function loadGuestbookEntries() {
+    if (guestbookLoad || typeof fetch !== 'function') return;
+    // no-cache revalidates against GitHub Pages' 10-minute cache, so a
+    // newly published entry shows on the next page load.
+    guestbookLoad = fetch('guestbook.json', { cache: 'no-cache' }).then(function(response) {
+      if (!response.ok) throw new Error('guestbook.json answered ' + response.status);
+      return response.json();
+    }).then(function(list) {
+      showGuestbookEntries(validGuestbookEntries(list));
+    }).catch(function() {
+      guestbookLoad = null;
+    });
+  }
+
+  // Keeps each entry whose three fields are strings within the signing
+  // form's limits, with a MM/DD/YYYY date, sorted newest first. Dates are
+  // compared as year, month and day, never through Date, and entries with
+  // the same date keep their order in the file.
+  function validGuestbookEntries(list) {
+    if (!Array.isArray(list)) return [];
+    var kept = [];
+    list.forEach(function(entry, index) {
+      if (!entry || typeof entry.name !== 'string' || typeof entry.date !== 'string' ||
+          typeof entry.message !== 'string') return;
+      var date = GUESTBOOK_DATE_FORMAT.exec(entry.date);
+      if (!date || entry.name.length > 30 || entry.message.length > 140) return;
+      kept.push({ entry: entry, index: index, day: date[3] + date[1] + date[2] });
+    });
+    kept.sort(function(a, b) {
+      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
+      return a.index - b.index;
+    });
+    return kept.map(function(k) { return k.entry; });
+  }
+
+  // Builds each entry like the 1999 ones, with textContent so HTML or a web
+  // address in an entry shows as typed characters.
+  function showGuestbookEntries(entries) {
+    var first1999 = document.querySelector('#window-guestbook .guestbook-entry:not(.guestbook-published)');
+    if (!first1999) return;
+    entries.forEach(function(entry) {
+      var item = document.createElement('div');
+      item.className = 'guestbook-entry guestbook-published';
+      var name = document.createElement('span');
+      name.className = 'guestbook-name';
+      name.textContent = entry.name;
+      var date = document.createElement('span');
+      date.className = 'guestbook-date';
+      date.textContent = entry.date;
+      var message = document.createElement('div');
+      message.className = 'guestbook-message';
+      message.textContent = entry.message;
+      item.appendChild(name);
+      // The 1999 markup has a space between name and date.
+      item.appendChild(document.createTextNode(' '));
+      item.appendChild(date);
+      item.appendChild(message);
+      first1999.parentNode.insertBefore(item, first1999);
+    });
+  }
+
+  // --- Form sends ---
+  // Contact and the Guestbook both post through sendForm. Its deadline comes
+  // from setTimeout and an AbortController, because Safari before 16 lacks
+  // AbortSignal.timeout.
+  var SEND_DEADLINE_MS = 8000;
+
+  // Both forms post to the Contact form's Formspree endpoint.
+  function formEndpoint() {
+    var form = document.getElementById('contact-form');
+    return form ? form.action : '';
+  }
+
+  // Posts data as JSON, which Formspree recommends for AJAX sends. send.done resolves on a 2xx reply whose body has no
+  // error or errors key, and otherwise rejects with { kind, status, message },
+  // where kind is 'timeout', 'network' (a blocked request, or a browser with
+  // no fetch) or 'http'. send.abort() cancels the request and leaves done
+  // unsettled, so a cancelled send changes nothing.
+  function sendForm(url, data) {
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var settled = false;
+    var timer = null;
+    var send = {};
+    send.done = new Promise(function(resolve, reject) {
+      function finish(settle, value) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        settle(value);
+      }
+      send.abort = function() {
+        settled = true;
+        clearTimeout(timer);
+        if (controller) controller.abort();
+      };
+      timer = setTimeout(function() {
+        if (controller) controller.abort();
+        finish(reject, { kind: 'timeout' });
+      }, SEND_DEADLINE_MS);
+      try {
+        fetch(url, {
           method: 'POST',
           body: JSON.stringify(data),
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
-          }
-        };
-        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-          fetchOpts.signal = AbortSignal.timeout(8000);
-        }
-
-        fetch(form.action, fetchOpts).then(function(response) {
-          if (response.ok) {
-            if (sendBtn) sendBtn.textContent = 'Message Sent!';
-            setTimeout(function() {
-              // Stale-submit guard: window was closed (and possibly reopened
-              // by now) during the success delay — leave the new instance alone.
-              if (myToken !== contactSubmitToken) return;
-              closeWindow('window-contact');
-              form.reset();
-              if (sendBtn) { sendBtn.textContent = 'Send'; sendBtn.disabled = false; }
-            }, 1500);
-          } else {
-            response.json().then(function(body) {
-              var msg = (body.errors && body.errors.length) ? body.errors[0].message : 'Send Failed';
-              if (sendBtn) { sendBtn.textContent = msg; sendBtn.disabled = false; }
-            }).catch(function() {
-              if (sendBtn) { sendBtn.textContent = 'Send Failed - Try Again'; sendBtn.disabled = false; }
-            });
-          }
-        }).catch(function(err) {
-          if (!sendBtn) return;
-          if (err && err.name === 'TimeoutError') {
-            sendBtn.textContent = "Couldn't send — try again";
-          } else {
-            sendBtn.textContent = 'Send Failed - Try Again';
-          }
-          sendBtn.disabled = false;
+          },
+          signal: controller ? controller.signal : undefined
+        }).then(function(response) {
+          return response.text().then(function(text) {
+            var body = null;
+            try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
+            if (response.ok && !(body && (body.error || body.errors))) {
+              finish(resolve, body);
+            } else {
+              finish(reject, { kind: 'http', status: response.status, message: formspreeError(body) });
+            }
+          });
+        }).catch(function() {
+          finish(reject, { kind: 'network' });
         });
-      });
+      } catch (e) {
+        finish(reject, { kind: 'network' });
+      }
+    });
+    return send;
+  }
+
+  // Formspree's own words for a rejected send, when it gave any.
+  function formspreeError(body) {
+    if (!body) return '';
+    if (body.errors && body.errors.length && body.errors[0].message) return body.errors[0].message;
+    return typeof body.error === 'string' ? body.error : '';
+  }
+
+  // --- Failed-send box ---
+  // A failed or unanswered send opens one Win98 message box with Retry,
+  // Open in Mail App, Copy Address and Cancel. Like a real message box it
+  // belongs to its form's window: it takes the form's title, has only a
+  // close button and no taskbar button, and closes back to the form's
+  // button. It keeps a copy of what failed, so Retry and the mail link
+  // still work after the form's window was closed.
+  var SEND_ERROR_ID = 'window-send-error';
+  var MAIL_ADDRESS = 'mitch@ribar.ai';
+  // Windows mail handlers drop or cut longer mailto links.
+  var MAILTO_MAX = 1800;
+  // The subject keeps to this many encoded characters, so the body always has room.
+  var MAILTO_SUBJECT_MAX = 300;
+  var sendError = null; // the open box: { sender, retry, quiet }
+  // The bytes of img/icons/critical-32.png, inlined because the box often
+  // opens when the network is down and the icon could not be fetched.
+  var CRITICAL_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAsklEQVR42u2X0QrAIAhF+/T+vL0sECnzpuaCCb4570lXWSm/4dYWHivaFh4BoxIWQM4Ke4G4iFsg3MQZRI44hai1Nrz03bRik/iigJATaiAWsXsAWghFTAcYQdhWB1RpVgWsv1QIaZEZgAuC4j4AIwiH7XgRQGoLUn/C4G2YfhB94yjOvozSr+PQgUTq/ZGRTCseMpSi4m5jOVL2ob0fbz1MzOIUgiQTncX6Gk0u+VUv3QfWxJJ1ZChILwAAAABJRU5ErkJggg==';
+
+  var SEND_ERROR_BODY =
+    '<div class="send-error-layout">' +
+      '<img src="' + CRITICAL_ICON + '" alt="" class="send-error-icon" width="32" height="32">' +
+      '<div class="send-error-text" id="send-error-desc">' +
+        '<p class="send-error-headline"></p>' +
+        '<p class="send-error-reason"></p>' +
+        '<p>Press Retry, or write to <span class="send-error-address">' + MAIL_ADDRESS + '</span> from your mail app.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="send-error-buttons">' +
+      '<button type="button" class="default send-error-retry">Retry</button>' +
+      '<a class="send-error-mail" href="mailto:' + MAIL_ADDRESS + '">Open in Mail App</a>' +
+      '<button type="button" class="send-error-copy">Copy Address</button>' +
+      '<button type="button" data-close-window="' + SEND_ERROR_ID + '">Cancel</button>' +
+    '</div>';
+
+  // The box's reason line for each way a send can fail.
+  function sendFailureText(reason) {
+    if (reason.kind === 'timeout') {
+      return 'The mail server did not answer within ' + (SEND_DEADLINE_MS / 1000) + ' seconds.';
     }
+    if (reason.kind === 'network') {
+      return 'Your browser could not reach the mail server. A lost connection or an ad blocker can cause this.';
+    }
+    if (reason.status === 429) return 'Too many messages were sent this minute. Wait a minute, then press Retry.';
+    if (reason.message) return 'The mail server said: ' + reason.message;
+    return 'The mail server answered with error ' + reason.status + '.';
+  }
+
+  // Opens the box for a failed send from sender, holding data, the copy
+  // that failed. A later failure from either form replaces the box and any
+  // Retry it had pending.
+  function showSendError(sender, data, reason) {
+    closeSendErrorQuietly();
+    var state = { sender: sender, retry: null, quiet: false };
+    sendError = state;
+
+    createAppWindow(SEND_ERROR_ID, sender.title, SEND_ERROR_BODY,
+      { width: '420px', noResize: true, transient: true, messageBox: true, icon: false,
+        bodyStyle: 'padding:12px;background:var(--win98-silver);' });
+    var box = document.getElementById(SEND_ERROR_ID);
+    box.setAttribute('role', 'alertdialog');
+    box.setAttribute('aria-describedby', 'send-error-desc');
+
+    // Visitor text and the reason go in as plain text, never as HTML.
+    var reasonLine = box.querySelector('.send-error-reason');
+    var retryBtn = box.querySelector('.send-error-retry');
+    var copyBtn = box.querySelector('.send-error-copy');
+    box.querySelector('.send-error-headline').textContent = 'Your ' + sender.noun + ' could not be sent.';
+    reasonLine.textContent = sendFailureText(reason);
+    box.querySelector('.send-error-mail').href = mailtoLink(sender, data);
+
+    // Retry sends the copy that failed again. While it waits, the button is
+    // marked unavailable without disabling it, so it keeps focus.
+    retryBtn.addEventListener('click', function() {
+      if (state.retry) return;
+      retryBtn.setAttribute('aria-disabled', 'true');
+      retryBtn.textContent = 'Retrying...';
+      announce('Retrying...');
+      state.retry = sendForm(formEndpoint(), data);
+      state.retry.done.then(function() {
+        state.retry = null;
+        closeWindow(SEND_ERROR_ID);
+        // The form's own success state runs only while its window is open.
+        var win = windows.get(sender.windowId);
+        if (win && win.state !== 'closed') sender.retried(data);
+      }, function(failure) {
+        state.retry = null;
+        retryBtn.removeAttribute('aria-disabled');
+        retryBtn.textContent = 'Retry';
+        reasonLine.textContent = sendFailureText(failure);
+        announce(reasonLine.textContent);
+      });
+    });
+    copyBtn.addEventListener('click', function() { copyMailAddress(box, copyBtn); });
+
+    registerCleanup(SEND_ERROR_ID, function() {
+      if (state.retry) state.retry.abort();
+      if (sendError === state) sendError = null;
+      // Focus goes back to the form only from the box itself, so a Retry
+      // that succeeds never pulls it out of a field the visitor moved to.
+      var active = document.activeElement;
+      var focusInBox = !active || active === document.body || box.contains(active);
+      // closeWindow focuses the next window after its cleanups run, so the
+      // hand-back waits until it has finished.
+      if (!state.quiet && focusInBox) Promise.resolve().then(function() { returnToSender(sender); });
+    });
+
+    // Win98 centers a message box; it opens with Retry, its default button.
+    centerWindowInViewport(box);
+    retryBtn.focus({ preventScroll: true });
+  }
+
+  // Closes the open box, and any Retry it has pending, without handing focus
+  // back to its form.
+  function closeSendErrorQuietly() {
+    if (!sendError) return;
+    sendError.quiet = true;
+    closeWindow(SEND_ERROR_ID);
+  }
+
+  // A send from sender's own button replaces its earlier failure, so that
+  // form's box closes quietly.
+  function dismissSendError(sender) {
+    if (sendError && sendError.sender === sender) closeSendErrorQuietly();
+  }
+
+  // Closing the box activates its form's window again, restoring it if it
+  // was minimized, and focuses the form's button. A closed window stays closed.
+  function returnToSender(sender) {
+    var win = windows.get(sender.windowId);
+    if (!win || win.state === 'closed') return;
+    if (win.state === 'minimized') restoreWindow(sender.windowId);
+    else bringToFront(sender.windowId);
+    var btn = sender.button();
+    if (btn) btn.focus({ preventScroll: true });
+  }
+
+  // Copy Address tries the Clipboard API, then execCommand. When neither
+  // reports success, the address is left selected for the visitor to copy.
+  function copyMailAddress(box, copyBtn) {
+    function copied() {
+      copyBtn.textContent = 'Copied!';
+      announce('Copied!');
+    }
+    function fallback() {
+      var range = document.createRange();
+      range.selectNodeContents(box.querySelector('.send-error-address'));
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      if (ok) copied();
+    }
+    var write = null;
+    try {
+      write = navigator.clipboard && navigator.clipboard.writeText(MAIL_ADDRESS);
+    } catch (e) {
+      write = null;
+    }
+    if (write && typeof write.then === 'function') write.then(copied, fallback);
+    else fallback();
+  }
+
+  // A mailto link to Mitch built from the copy that failed. Subject and body
+  // are percent-encoded with CRLF line breaks (RFC 6068). A link that would
+  // pass MAILTO_MAX characters gets a shortened body that ends with a note
+  // sending the visitor back to the form, which still holds the full text.
+  function mailtoLink(sender, data) {
+    var head = 'mailto:' + MAIL_ADDRESS + '?subject=' +
+      encodedPrefix(sender.mailSubject(data), MAILTO_SUBJECT_MAX) + '&body=';
+    var body = sender.mailBody(data);
+    var encodedBody = mailtoEncode(body);
+    if (head.length + encodedBody.length <= MAILTO_MAX) return head + encodedBody;
+    var note = mailtoEncode('\n\n[Message shortened. The full text is still in the ' + sender.title + ' window.]');
+    return head + encodedPrefix(body, MAILTO_MAX - head.length - note.length) + note;
+  }
+
+  function mailtoEncode(text) {
+    var crlf = String(text).replace(/\r\n|\r|\n/g, '\r\n');
+    try {
+      return encodeURIComponent(crlf);
+    } catch (e) {
+      // encodeURIComponent rejects a lone half of a surrogate pair.
+      return encodeURIComponent(crlf.replace(/[\uD800-\uDFFF]/g, '\uFFFD'));
+    }
+  }
+
+  // The encoding of the longest start of text that fits in budget
+  // characters. The cut never splits a surrogate pair.
+  function encodedPrefix(text, budget) {
+    function start(n) {
+      var code = text.charCodeAt(n - 1);
+      return text.slice(0, code >= 0xD800 && code <= 0xDBFF ? n - 1 : n);
+    }
+    var lo = 0;
+    // Every character encodes to at least one, so no longer start can fit.
+    var hi = Math.min(text.length, Math.max(budget, 0));
+    while (lo < hi) {
+      var mid = Math.ceil((lo + hi) / 2);
+      if (mailtoEncode(start(mid)).length <= budget) lo = mid;
+      else hi = mid - 1;
+    }
+    return mailtoEncode(start(lo));
   }
 
   // --- Context Menus ---
@@ -3222,8 +3707,10 @@
   }
 
   // --- Quick Launch: Show Desktop ---
+  // A message box has no taskbar button to bring it back, so it stays open.
   function showDesktop() {
     windows.forEach(function(win, id) {
+      if (win.messageBox) return;
       if (win.state === 'open' || win.state === 'maximized') {
         minimizeWindow(id);
       }
@@ -3277,7 +3764,7 @@
       '<div class="window-body" role="document"' + bodyStyle + '>' + bodyHtml + '</div>';
 
     elDesktop.appendChild(win);
-    registerWindow(id, win, { transient: !!opts.transient });
+    registerWindow(id, win, { transient: !!opts.transient, messageBox: !!opts.messageBox });
     openWindow(id);
     // A content-sized window ('auto') is pinned to its measured width: the
     // window manager saves and restores px rects across minimize.
@@ -4084,6 +4571,7 @@
     startClock();
     initVisitorCounter();
     initContactForm();
+    initGuestbookForm();
     initMyComputer();
     setupSystemTrayClicks();
     watchShutdownDim();
@@ -4115,6 +4603,7 @@
     // restore. Hash deep-link to #window-clock needs startAnalogueClock to
     // fire from openWindow (the tray click path called it directly before).
     windowOpenHooks['window-clock'] = startAnalogueClock;
+    windowOpenHooks['window-guestbook'] = loadGuestbookEntries;
     windowMinimizeHooks['window-clock'] = stopAnalogueClock;
     windowRestoreHooks['window-clock'] = startAnalogueClock;
 

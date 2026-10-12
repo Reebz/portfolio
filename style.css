@@ -867,6 +867,66 @@ body[data-theme="hotdog"] .window .title-bar.inactive { background: linear-gradi
   line-height: 1.4;
 }
 
+/* Visitor names and messages can hold long unbroken words. */
+.guestbook-name,
+.guestbook-message {
+  overflow-wrap: anywhere;
+}
+
+/* A published message keeps the line breaks its signer typed. */
+.guestbook-published .guestbook-message {
+  white-space: pre-line;
+}
+
+/* The signing form. Its rules stay under #guestbook-form, because 98.css
+   styles bare inputs, textareas and buttons everywhere else. */
+#guestbook-form {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--win98-grey);
+}
+
+#guestbook-form .field-row-stacked {
+  margin: 0 0 6px;
+}
+
+#guestbook-form input[type="text"],
+#guestbook-form textarea {
+  width: 100%;
+}
+
+/* WebKit gives the empty message box a sideways scrollbar, as it does
+   Contact's. */
+#guestbook-form textarea {
+  resize: none;
+  overflow-x: hidden;
+}
+
+#guestbook-form p {
+  margin: 0 0 6px;
+}
+
+.guestbook-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#guestbook-form .guestbook-status {
+  margin: 0;
+}
+
+/* Off screen, out of the tab order and hidden from screen readers, but
+   still in the form, where a bot that fills every field finds it. */
+.guestbook-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 /* === Mobile / Touch ===
    Entry point for responsive rules on touch devices (no hover + coarse pointer).
    Two breakpoints (phone-portrait, phone-landscape) cover phones. Tablets
@@ -2328,5 +2388,77 @@ html.shutdown-dim #window-shutdown {
   .desktop-icon-label {
     background: var(--desktop-color);
     text-shadow: none;
+  }
+}
+
+/* === Failed-send box === */
+/* Above every window and Clippy (8500), below the taskbar (9000), the Start
+   menu and context menus. Windows rise on press, so without this a tap on
+   the form behind the box would bury it. */
+#window-send-error {
+  z-index: 8600 !important;
+}
+
+.send-error-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.send-error-icon {
+  flex: none;
+  image-rendering: pixelated;
+}
+
+.send-error-text p {
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.send-error-address {
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+/* Win98 centers a message box's buttons. Phones wrap them onto more rows. */
+.send-error-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Retry stays focusable while it waits, so it is greyed by hand. */
+.send-error-retry[aria-disabled="true"] {
+  color: grey;
+  text-shadow: 1px 1px 0 #fff;
+}
+
+/* The mail link is a real link drawn as a 98.css button. */
+.send-error-mail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 23px;
+  min-width: 75px;
+  padding: 0 12px;
+  background: silver;
+  box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
+  color: transparent;
+  text-shadow: 0 0 #222;
+  text-decoration: none;
+}
+
+.send-error-mail:active {
+  box-shadow: inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey;
+  text-shadow: 1px 1px #222;
+}
+
+/* The box's 4px margin sits on both sides of a phone screen. */
+@media (hover: none) and (pointer: coarse) and (max-width: 767px) {
+  #window-send-error {
+    max-width: calc(100vw - 16px);
   }
 }

@@ -62,6 +62,28 @@ test.describe('iOS auto-zoom prevention', () => {
     expect(style.fontFamily.toLowerCase()).toContain('tahoma');
   });
 
+  // The Guestbook's signing fields get the same floor from the same rule.
+  for (const field of ['#guestbook-name', '#guestbook-message']) {
+    test(`Guestbook ${field} computes to ≥16px Tahoma and focusing it keeps scale 1`, async ({ page }) => {
+      await page.evaluate(() => { window.location.hash = '#window-guestbook'; });
+      await expect(page.locator('#window-guestbook')).toHaveAttribute('data-state', 'maximized');
+      const input = page.locator(field);
+      await expect(input).toBeVisible();
+      await input.focus();
+      await page.waitForTimeout(100);
+
+      const style = await input.evaluate((el) => {
+        var cs = getComputedStyle(el);
+        return { fontSize: parseFloat(cs.fontSize), fontFamily: cs.fontFamily };
+      });
+      expect(style.fontSize).toBeGreaterThanOrEqual(16);
+      expect(style.fontFamily.toLowerCase()).toContain('tahoma');
+      const scale = await page.evaluate(() => window.visualViewport ? window.visualViewport.scale : 1);
+      expect(scale).toBeGreaterThanOrEqual(0.99);
+      expect(scale).toBeLessThanOrEqual(1.01);
+    });
+  }
+
   test('U4: visualViewport scale stays at 1 after focusing an input', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#window-contact'; });
     await page.waitForTimeout(200);
