@@ -51,6 +51,44 @@
     <a href="#taskbar">Skip to taskbar</a>
   </nav>
 
+  <!-- No-JavaScript panel. Scripts draw the desktop, so without them this
+       window stands in for it, and crawlers that skip scripts read it too.
+       Its project list copies PROJECTS in desktop.js by hand, and
+       tests/no-js-panel.spec.js fails when the two drift apart. -->
+  <noscript>
+    <main id="nojs" class="window" data-state="open">
+      <div class="title-bar">
+        <div class="title-bar-text">Portfolio 98</div>
+      </div>
+      <div class="window-body">
+        <h1 style="margin:0 0 8px;font-size:14px;">Mitch Ribar</h1>
+        <p>AI products, growth systems &amp; software</p>
+        <p><a href="mailto:mitch@ribar.ai">mitch@ribar.ai</a></p>
+        <div class="nojs-projects">
+          <dl>
+            <dt><a href="https://alwaysdraft.com/" target="_blank" rel="noopener">Always dRaft</a></dt>
+            <dd>Blog</dd>
+            <dt><a href="https://claudebattery.com/" target="_blank" rel="noopener">Claude Battery</a></dt>
+            <dd>AI tool</dd>
+            <dt><a href="https://www.availabilityclick.com/" target="_blank" rel="noopener">Avails Click</a></dt>
+            <dd>Availability tool</dd>
+            <dt><a href="https://www.linkedin.com/in/mitchribar/" target="_blank" rel="noopener">LinkedIn</a></dt>
+            <dd>Professional profile</dd>
+            <dt>Obsidian Game</dt>
+            <dd>Game project</dd>
+            <dt>Microgram</dt>
+            <dd>Coming soon</dd>
+            <dt>Cavaro</dt>
+            <dd>Stealth mode</dd>
+            <dt><a href="http://snowballdodge.com/" target="_blank" rel="noopener">Snowball Dodge</a></dt>
+            <dd>Game</dd>
+          </dl>
+          <p>Turn on JavaScript to explore the full Windows 98 desktop.</p>
+        </div>
+      </div>
+    </main>
+  </noscript>
+
   <div id="desktop" role="application" aria-label="Windows 98 desktop" aria-roledescription="desktop" aria-describedby="desktop-instructions">
     <div id="desktop-instructions" class="sr-only">
       This is an interactive Windows 98 desktop simulation.
